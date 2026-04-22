@@ -168,7 +168,6 @@ export const creation = {
         container.innerHTML = `
             ${modalHtml}
             ${regenOverlay}
-            ${regenOverlay}
             <div id="toast-container" class="fixed top-8 right-8 z-[200] flex flex-col gap-3 pointer-events-none"></div>
             
             <div class="container mx-auto px-4 py-8 space-y-10 animate-in fade-in duration-700">
