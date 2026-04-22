@@ -649,41 +649,51 @@ export const creation = {
     async handleRegenerate() {
         if (this.isRegenerating) return;
 
-        const REGENERATE_WEBHOOK_URL = 'https://hook.eu1.make.com/6j8m1v7v5k9x4y2z1a3b4c5d6e7f8g9h'; // Placeholder - \u00e0 remplacer par l'URL r\u00e9elle
+        const REGENERATE_WEBHOOK_URL = 'https://hook.eu1.make.com/njj9og03bvurjkv268yt9wjld0q2vs7m';
         
         this.isRegenerating = true;
         this.render();
 
         try {
             const payload = {
-                current_content: this.content.post.body,
-                selected_tone: this.tone,
-                selected_objective: this.goal
+                content_body: this.content.post.body,
+                tone: this.tone,
+                objective: this.goal
             };
 
-            console.log("DEBUG: Envoi de la requ\u00eate de r\u00e9g\u00e9n\u00e9ration", payload);
+            console.log(">>> Appel Webhook Make Régénération:", payload);
 
-            // Simulation d'appel API (remplacer par le fetch r\u00e9el vers Make.com)
             const response = await fetch(REGENERATE_WEBHOOK_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
 
-            if (!response.ok) throw new Error("Erreur lors de la r\u00e9g\u00e9n\u00e9ration");
+            if (!response.ok) throw new Error("Erreur HTTP: " + response.status);
 
-            // On attend le nouveau texte (format JSON attendu : { "new_content": "..." })
-            const result = await response.json();
-            
-            if (result && result.new_content) {
-                this.content.post.body = result.new_content;
-                this.initialTone = this.tone;
+            const textResponse = await response.text();
+            let newContent = textResponse;
+            try {
+                // Tentative de parsing JSON si Make le renvoie formaté
+                const json = JSON.parse(textResponse);
+                if (json.content_body) newContent = json.content_body;
+                else if (json.new_content) newContent = json.new_content;
+                else if (json.text) newContent = json.text;
+            } catch(e) {
+                // Si non JSON, on utilise directement le texte
+            }
+
+            if (newContent && newContent.trim().length > 0) {
+                this.content.post.body = newContent;
+                this.initialTone = this.tone; // Réinitialise l'état des options
                 this.initialGoal = this.goal;
-                this.showToast("Contenu r\u00e9g\u00e9n\u00e9r\u00e9 avec succ\u00e8s !");
+                this.showToast("Le contenu a bien été régénéré", 'success');
+            } else {
+                throw new Error("Réponse vide de Make");
             }
         } catch (error) {
-            console.error("Erreur de r\u00e9g\u00e9n\u00e9ration:", error);
-            this.showToast("Erreur lors de la r\u00e9g\u00e9n\u00e9ration", "error");
+            console.error(">>> Erreur de régénération:", error);
+            this.showToast("Erreur lors de la régénération, veuillez réessayer", "error");
         } finally {
             this.isRegenerating = false;
             this.render();
