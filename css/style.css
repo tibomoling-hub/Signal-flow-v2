@@ -1,0 +1,86 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+    --bg-deep: #0a0a0c;
+    --bg-panel: #121215;
+    --accent-blue: #3b82f6;
+    --border-subtle: rgba(255, 255, 255, 0.05);
+}
+
+@layer base {
+    body {
+        @apply bg-anthracite-950 text-zinc-300 antialiased;
+        font-feature-settings: "cv02", "cv03", "cv04", "ss01";
+    }
+
+    h1, h2, h3, h4 {
+        @apply text-white font-display;
+    }
+}
+
+@layer components {
+    .glass-panel {
+        @apply bg-anthracite-900/50 backdrop-blur-md border border-white/5;
+    }
+
+    .btn-neon {
+        @apply bg-blue-600 text-white font-semibold py-3 px-6 rounded-xl 
+               transition-all duration-300 shadow-[0_0_15px_rgba(59,130,246,0.3)]
+               hover:shadow-[0_0_25px_rgba(59,130,246,0.5)] hover:bg-blue-500 active:scale-[0.98];
+    }
+
+    .btn-secondary {
+        @apply bg-white/5 border border-white/10 text-zinc-300 font-medium py-3 px-6 rounded-xl
+               hover:bg-white/10 hover:text-white transition-all duration-300;
+    }
+
+    .input-premium {
+        @apply bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white
+               focus:border-blue-500/50 focus:ring-4 focus:ring-blue-500/10 
+               transition-all outline-none placeholder:text-zinc-600 font-normal;
+    }
+
+    .text-detail {
+        @apply text-[11px] uppercase tracking-[0.2em] font-medium text-zinc-500;
+    }
+
+    .text-secondary {
+        @apply text-sm text-zinc-400 font-light tracking-wide leading-relaxed;
+    }
+}
+
+/* Animations minimalistes (statiques) */
+.view-transition {
+    /* Pas de mouvements, juste des opacités fluides */
+    animation: fadeIn 0.4s ease-out forwards;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* Scrollbar fine */
+::-webkit-scrollbar {
+    width: 6px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    @apply bg-zinc-800 rounded-full;
+}
+::-webkit-scrollbar-thumb:hover {
+    @apply bg-zinc-700;
+}
+
+@keyframes pulse-skeleton {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+.animate-skeleton {
+    animation: pulse-skeleton 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
