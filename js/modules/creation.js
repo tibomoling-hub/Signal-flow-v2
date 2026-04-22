@@ -163,20 +163,6 @@ export const creation = {
             </div>
         ` : '';
 
-        const regenOverlay = this.isRegenerating ? `
-            <div class="fixed inset-0 z-[300] flex items-center justify-center p-6 bg-anthracite-950/40 backdrop-blur-[4px] animate-in fade-in duration-300">
-                <div class="glass-panel p-10 border border-white/10 rounded-[2.5rem] shadow-2xl flex flex-col items-center gap-6 animate-in zoom-in-95 duration-300 text-center">
-                    <div class="w-16 h-16 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center shadow-[0_0_30px_rgba(59,130,246,0.3)]">
-                        <i data-lucide="loader-2" class="w-8 h-8 text-blue-500 animate-spin"></i>
-                    </div>
-                    <div class="space-y-2">
-                        <h3 class="text-2xl font-black text-white tracking-tighter">Génération en cours</h3>
-                        <p class="text-zinc-400 text-sm">Le système est en train de régénérer votre contenu...</p>
-                    </div>
-                </div>
-            </div>
-        ` : '';
-
         const hasChanged = this.tone !== this.initialTone || this.goal !== this.initialGoal;
 
         container.innerHTML = `
