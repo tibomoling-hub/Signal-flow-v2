@@ -1,5 +1,5 @@
 /**
- * Configuration de l'application TaskFlow
+ * Configuration de l'application Signal Flow
  * Les clés anonymes sont destinées à être exposées côté client.
  */
 export const config = {

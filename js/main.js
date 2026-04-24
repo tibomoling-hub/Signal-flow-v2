@@ -2,7 +2,7 @@ import { supabase } from './supabase.js';
 import { onboarding } from './modules/onboarding.js';
 import { dashboard } from './modules/dashboard.js';
 
-console.log("SignalFlow: main.js initializing...");
+console.log("Signal Flow: main.js initializing...");
 
 // --- State Management ---
 const state = {
@@ -21,7 +21,7 @@ const views = {
                 <div class="relative z-10 space-y-12">
                     <div class="flex items-center gap-4">
                         <div class="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center font-black text-white shadow-[0_0_20px_rgba(59,130,246,0.4)]">S</div>
-                        <h1 class="text-3xl font-black font-display text-white tracking-tight">SignalFlow</h1>
+                        <h1 class="text-3xl font-black font-display text-white tracking-tight">Signal Flow</h1>
                     </div>
                     
                     <div class="space-y-8 max-w-lg">
@@ -59,26 +59,49 @@ const views = {
                     </div>
 
                     <form id="auth-form" class="space-y-6">
-                        <div class="space-y-2">
-                            <label for="email" class="text-detail ml-1">E-mail</label>
-                            <input type="email" id="email" placeholder="nom@agence.com" class="input-premium w-full" required>
-                        </div>
-                        <div class="space-y-2">
-                            <div class="flex justify-between items-center">
-                                <label for="password" class="text-detail ml-1">Mot de passe</label>
-                                <a href="#" class="text-[11px] text-blue-500 hover:text-blue-400 font-bold uppercase tracking-wider transition-colors">Oublié ?</a>
-                            </div>
-                            <input type="password" id="password" placeholder="••••••••" class="input-premium w-full" required>
+                        <div id="auth-error" class="hidden p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-[11px] font-bold uppercase tracking-wider animate-in fade-in slide-in-from-top-2">
+                            Identifiants incorrects
                         </div>
                         
-                        <button type="submit" class="btn-neon w-full uppercase tracking-widest text-xs font-bold py-4">
-                            Se connecter
+                        <div class="space-y-2 group">
+                            <label for="email" class="text-detail ml-1 group-focus-within:text-blue-500 transition-colors">E-mail</label>
+                            <input type="email" id="email" placeholder="nom@agence.com" class="input-premium w-full transition-all" required>
+                        </div>
+                        
+                        <div class="space-y-2 group">
+                            <div class="flex justify-between items-center">
+                                <label for="password" class="text-detail ml-1 group-focus-within:text-blue-500 transition-colors">Mot de passe</label>
+                                <button type="button" onclick="window.togglePasswordVisibility(event)" class="text-[11px] text-zinc-500 hover:text-zinc-300 font-bold uppercase tracking-wider transition-colors">Afficher</button>
+                            </div>
+                            <div class="relative">
+                                <input type="password" id="password" placeholder="••••••••" class="input-premium w-full pr-12 transition-all" required>
+                                <div class="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-600 pointer-events-none">
+                                    <i data-lucide="lock" class="w-4 h-4"></i>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center justify-between px-1">
+                            <label class="flex items-center gap-3 cursor-pointer group">
+                                <div class="relative w-5 h-5">
+                                    <input type="checkbox" id="remember-me" class="peer sr-only">
+                                    <div class="w-full h-full rounded-md border border-white/10 bg-white/5 peer-checked:bg-blue-600 peer-checked:border-blue-500 transition-all"></div>
+                                    <i data-lucide="check" class="absolute inset-0 w-3 h-3 m-auto text-white opacity-0 peer-checked:opacity-100 transition-opacity"></i>
+                                </div>
+                                <span class="text-[11px] text-zinc-500 group-hover:text-zinc-300 font-bold uppercase tracking-[0.15em] transition-colors">Se souvenir de moi</span>
+                            </label>
+                            <a href="#" class="text-[11px] text-blue-500 hover:text-blue-400 font-bold uppercase tracking-wider transition-colors">Oublié ?</a>
+                        </div>
+                        
+                        <button type="submit" id="auth-submit" class="btn-neon w-full uppercase tracking-widest text-xs font-bold py-4 flex items-center justify-center gap-3">
+                            <span id="btn-text">Se connecter</span>
+                            <div id="btn-spinner" class="hidden w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
                         </button>
                     </form>
 
                     <div class="relative py-4 flex items-center justify-center">
                         <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-white/5"></div></div>
-                        <span class="relative px-6 bg-anthracite-950 text-detail">Ou continuer avec</span>
+                        <span class="relative px-6 bg-[#0a0a0c] text-detail uppercase tracking-widest !text-[9px]">Ou continuer avec</span>
                     </div>
 
                     <div class="grid grid-cols-2 gap-4">
@@ -124,7 +147,7 @@ function render() {
             attachEventListeners();
         }
     } catch (e) {
-        console.error("SignalFlow Render Error:", e);
+        console.error("Signal Flow Render Error:", e);
         app.innerHTML = `<div class="p-20 text-center text-red-400 font-bold">Erreur critique : ${e.message}</div>`;
     }
     
@@ -138,6 +161,19 @@ function attachEventListeners() {
     const linkedinBtn = document.getElementById('login-linkedin');
     const authForm = document.getElementById('auth-form');
 
+    // Helper visibility
+    window.togglePasswordVisibility = (e) => {
+        const input = document.getElementById('password');
+        const btn = e.target;
+        if (input.type === 'password') {
+            input.type = 'text';
+            btn.innerText = 'Masquer';
+        } else {
+            input.type = 'password';
+            btn.innerText = 'Afficher';
+        }
+    };
+
     const navigateToOnboarding = () => {
         state.currentView = 'onboarding';
         render();
@@ -145,10 +181,65 @@ function attachEventListeners() {
 
     if (googleBtn) googleBtn.onclick = navigateToOnboarding;
     if (linkedinBtn) linkedinBtn.onclick = navigateToOnboarding;
+    
     if (authForm) {
-        authForm.onsubmit = (e) => {
+        authForm.onsubmit = async (e) => {
             e.preventDefault();
-            navigateToOnboarding();
+            
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+            const errorMsg = document.getElementById('auth-error');
+            const submitBtn = document.getElementById('auth-submit');
+            const btnText = document.getElementById('btn-text');
+            const btnSpinner = document.getElementById('btn-spinner');
+            const emailInput = document.getElementById('email');
+            const passwordInput = document.getElementById('password');
+
+            // Reset UI
+            errorMsg.classList.add('hidden');
+            emailInput.classList.remove('border-red-500/50', 'bg-red-500/5');
+            passwordInput.classList.remove('border-red-500/50', 'bg-red-500/5');
+
+            // Loading state
+            submitBtn.disabled = true;
+            btnText.innerText = 'Vérification...';
+            btnSpinner.classList.remove('hidden');
+
+            try {
+                const { data, error } = await supabase.auth.signInWithPassword({
+                    email,
+                    password
+                });
+
+                if (error) throw error;
+
+                // Success logic
+                state.user = data.user;
+                console.log("Signal Flow: Auth success for", data.user.email);
+                
+                // Relaunch init to check onboarding and navigate
+                await init();
+
+            } catch (err) {
+                console.error("Signal Flow: Auth error", err.message);
+                
+                // UI Error state
+                errorMsg.innerText = err.message === 'Invalid login credentials' ? 'Identifiants incorrects' : 'Erreur de connexion';
+                errorMsg.classList.remove('hidden');
+                
+                // Field feedback
+                emailInput.classList.add('border-red-500/50', 'bg-red-500/5');
+                passwordInput.classList.add('border-red-500/50', 'bg-red-500/5');
+                
+                // Shake effect (optional micro-animation)
+                authForm.classList.add('animate-shake');
+                setTimeout(() => authForm.classList.remove('animate-shake'), 500);
+
+            } finally {
+                submitBtn.disabled = false;
+                btnText.innerText = 'Se connecter';
+                btnSpinner.classList.add('hidden');
+            }
         };
     }
 }
@@ -164,20 +255,35 @@ async function init() {
         const { data: { session } } = await supabase.auth.getSession();
         if (session) {
             state.user = session.user;
+            
+            // On s'assure que l'utilisateur existe en base et on récupère ses données
+            await onboarding.ensureUserExists();
+            
             const { data: profile } = await supabase
                 .from('users')
                 .select('*')
                 .eq('id_auth_user', session.user.id)
                 .single();
 
-            if (profile?.onboarding_completed) {
+            if (profile) {
+                // Populate onboarding data with existing values to allow resuming
                 onboarding.updateData({
-                    firstName: profile.first_name,
-                    brand: profile.brand,
-                    tone: profile.tone,
-                    goal: profile.goal
+                    firstName: profile.full_name || profile.first_name || '',
+                    brand: profile.company || profile.brand || '',
+                    description: profile.description || '',
+                    linkedinUrl: profile.linkedin_url || '',
+                    niche: profile.topic ? (typeof profile.topic === 'string' ? profile.topic.split(',').map(s => s.trim()) : profile.topic) : [],
+                    tone: profile.tone || 'Expert',
+                    goal: profile.goal || 'grow',
+                    rgpd: profile.rgpd_accepted || false
                 });
-                state.currentView = 'dashboard';
+
+                if (profile.onboarding_completed) {
+                    state.currentView = 'dashboard';
+                } else {
+                    // Optionnel : on pourrait aussi essayer de deviner l'étape actuelle
+                    state.currentView = 'onboarding';
+                }
             } else {
                 state.currentView = 'onboarding';
             }
@@ -185,7 +291,7 @@ async function init() {
             state.currentView = 'auth';
         }
     } catch (e) {
-        console.warn("SignalFlow Auth: Offline or unconfigured.", e);
+        console.warn("Signal Flow Auth: Offline or unconfigured.", e);
         state.currentView = 'auth';
     }
 

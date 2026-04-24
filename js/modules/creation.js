@@ -25,7 +25,7 @@ export const creation = {
         },
         carousel: [
             { title: "L'IA pour les créateurs", content: "Guide complet 2024" },
-            { title: "Étape 1 : Veille", content: "Utilisez SignalFlow pour trouver les signaux." },
+            { title: "Étape 1 : Veille", content: "Utilisez Signal Flow pour trouver les signaux." },
             { title: "Étape 2 : Analyse", content: "Décortiquez les sources." },
             { title: "Étape 3 : Création", content: "Générez votre post." },
             { title: "Étape 4 : Publication", content: "Optimisez votre reach." },
@@ -151,13 +151,14 @@ export const creation = {
 
         const regenOverlay = this.isRegenerating ? `
             <div class="fixed inset-0 z-[300] flex items-center justify-center p-6 bg-anthracite-950/40 backdrop-blur-[4px] animate-in fade-in duration-300">
-                <div class="glass-panel p-10 border border-white/10 rounded-[2.5rem] shadow-2xl flex flex-col items-center gap-6 animate-in zoom-in-95 duration-300 text-center">
-                    <div class="w-16 h-16 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center shadow-[0_0_30px_rgba(59,130,246,0.3)]">
-                        <i data-lucide="loader-2" class="w-8 h-8 text-blue-500 animate-spin"></i>
+                <div class="bg-white px-12 py-10 rounded-[2.5rem] shadow-[0_40px_80px_-15px_rgba(0,0,0,0.3)] border border-zinc-100 flex flex-col items-center gap-8 animate-in zoom-in-95 duration-500">
+                    <div class="relative">
+                        <div class="w-16 h-16 border-4 border-blue-600/10 rounded-full"></div>
+                        <div class="absolute inset-0 w-16 h-16 border-4 border-transparent border-t-blue-600 rounded-full animate-spin"></div>
                     </div>
-                    <div class="space-y-2">
-                        <h3 class="text-2xl font-black text-white tracking-tighter">Génération en cours</h3>
-                        <p class="text-zinc-400 text-sm">Le système est en train de régénérer votre contenu...</p>
+                    <div class="flex flex-col items-center gap-2">
+                        <p class="text-2xl font-black text-zinc-900 tracking-tighter animate-pulse text-center">Création de votre post personnalisé</p>
+                        <p class="text-sm text-zinc-500 font-medium tracking-tight">Signal Flow IA génère la meilleure version...</p>
                     </div>
                 </div>
             </div>
@@ -207,13 +208,10 @@ export const creation = {
                     </div>
                     <!-- Regenerate Button -->
                     <button 
-                        onclick="${hasChanged && !this.isRegenerating ? 'window.creation.handleRegenerate()' : ''}"
-                        ${!hasChanged || this.isRegenerating ? 'disabled' : ''}
+                        onclick="${!this.isRegenerating ? 'window.creation.handleRegenerate()' : ''}"
+                        ${this.isRegenerating ? 'disabled' : ''}
                         class="w-full md:w-auto px-8 py-3.5 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-3 transition-all duration-300 shadow-sm
-                        ${this.isRegenerating ? 'bg-blue-600/50 cursor-wait text-white/50' : 
-                          hasChanged 
-                            ? 'bg-blue-600 text-white cursor-pointer hover:bg-blue-700 shadow-md hover:-translate-y-0.5 active:translate-y-0' 
-                            : 'bg-gray-300 text-gray-500 cursor-not-allowed opacity-50'}"
+                        ${this.isRegenerating ? 'bg-blue-600/50 cursor-wait text-white/50' : 'bg-blue-600 text-white cursor-pointer hover:bg-blue-700 shadow-md hover:-translate-y-0.5 active:translate-y-0'}"
                     >
                         <i data-lucide="refresh-cw" class="w-4 h-4 ${this.isRegenerating ? 'animate-spin' : (hasChanged ? 'animate-in spin-in duration-500' : '')}"></i>
                         ${this.isRegenerating ? 'G\u00e9n\u00e9ration...' : 'Reg\u00e9n\u00e9rer'}
@@ -257,12 +255,15 @@ export const creation = {
                         <div class="mt-6 flex justify-end items-center gap-4 px-2">
                             <button 
                                 onclick="window.creation.handleSave()"
-                                ${this.isSaving ? 'disabled' : ''}
-                                class="px-6 py-2 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 active:scale-95 transition-all flex items-center gap-2 shadow-sm"
+                                ${this.isSaving || this.isRegenerating ? 'disabled' : ''}
+                                class="px-6 py-2 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 active:scale-95 transition-all flex items-center gap-2 shadow-sm ${this.isRegenerating ? 'opacity-50 cursor-not-allowed' : ''}"
                             >
                                 ${this.isSaving ? '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Enregistrement...' : 'Enregistrer'}
                             </button>
-                            <button class="px-6 py-2 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 active:scale-95 transition-all shadow-sm">
+                            <button 
+                                ${this.isRegenerating ? 'disabled' : ''}
+                                class="px-6 py-2 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 active:scale-95 transition-all shadow-sm ${this.isRegenerating ? 'opacity-50 cursor-not-allowed' : ''}"
+                            >
                                 Publier
                             </button>
                         </div>
@@ -288,7 +289,7 @@ export const creation = {
                         </div>
                         <div class="flex flex-col items-center gap-2">
                             <p class="text-2xl font-black text-zinc-900 tracking-tighter animate-pulse text-center">Cr\u00e9ation de votre post personnalis\u00e9</p>
-                            <p class="text-sm text-zinc-500 font-medium tracking-tight">SignalFlow IA g\u00e9n\u00e8re la meilleure version...</p>
+                            <p class="text-sm text-zinc-500 font-medium tracking-tight">Signal Flow IA g\u00e9n\u00e8re la meilleure version...</p>
                         </div>
                     </div>
                 </div>
@@ -394,6 +395,22 @@ export const creation = {
         const inputClass = "w-full bg-anthracite-950 border border-white/5 rounded-xl px-5 py-3 text-sm text-white focus:border-blue-500/40 outline-none transition-all";
         
         if (this.format === 'post') {
+            if (this.isRegenerating) {
+                return `
+                    <div class="space-y-6">
+                        <div class="space-y-2">
+                            <label class="text-detail ml-1">Corps du contenu</label>
+                            <div class="rounded-2xl border border-white/10 p-8 bg-white/5 space-y-4">
+                                <div class="h-4 w-full bg-white/10 rounded animate-pulse"></div>
+                                <div class="h-4 w-5/6 bg-white/10 rounded animate-pulse"></div>
+                                <div class="h-4 w-4/6 bg-white/10 rounded animate-pulse"></div>
+                                <div class="h-4 w-full bg-white/10 rounded animate-pulse pt-4"></div>
+                                <div class="h-4 w-2/3 bg-white/10 rounded animate-pulse"></div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
             return `
                 <div class="space-y-6">
                     <div class="space-y-2">
@@ -454,9 +471,27 @@ export const creation = {
 
     getPreviewHtml() {
         const userName = onboarding.data.firstName || 'Créateur';
-        const brand = onboarding.data.brand || 'Studio SignalFlow';
+        const brand = onboarding.data.brand || 'Studio Signal Flow';
         
         if (this.format === 'post') {
+            if (this.isRegenerating) {
+                return `
+                    <div class="bg-white p-6 space-y-6 rounded-2xl">
+                        <div class="flex items-center gap-3">
+                            <div class="w-12 h-12 rounded-full bg-zinc-100 animate-pulse"></div>
+                            <div class="space-y-2">
+                                <div class="h-3 w-24 bg-zinc-100 rounded animate-pulse"></div>
+                                <div class="h-2 w-16 bg-zinc-100 rounded animate-pulse"></div>
+                            </div>
+                        </div>
+                        <div class="space-y-3 pt-4">
+                            <div class="h-4 w-full bg-zinc-100 rounded animate-pulse"></div>
+                            <div class="h-4 w-full bg-zinc-100 rounded animate-pulse"></div>
+                            <div class="h-4 w-2/3 bg-zinc-100 rounded animate-pulse"></div>
+                        </div>
+                    </div>
+                `;
+            }
             return `
                 <div class="bg-white text-zinc-900 rounded-2xl overflow-hidden shadow-2xl font-sans">
                     <div class="p-4 flex items-center gap-3">
@@ -503,7 +538,7 @@ export const creation = {
                                 <p class="text-lg font-light opacity-80 leading-relaxed">${this.content.carousel[0].content}</p>
                             </div>
                             <div class="flex justify-between items-end">
-                                <div class="text-[10px] font-black uppercase tracking-widest opacity-60">SignalFlow Studio</div>
+                                <div class="text-[10px] font-black uppercase tracking-widest opacity-60">Signal Flow Studio</div>
                                 <div class="text-[10px] bg-white/10 px-3 py-1.5 rounded-full font-bold">1 / ${this.content.carousel.length}</div>
                             </div>
                         </div>
@@ -641,9 +676,7 @@ export const creation = {
 
         try {
             const payload = {
-                content_body: this.content.post.body,
-                tone: this.tone,
-                objective: this.goal
+                content_body: this.content.post.body
             };
 
             console.log(">>> Appel Webhook Make Régénération:", payload);

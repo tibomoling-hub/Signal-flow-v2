@@ -42,7 +42,7 @@ export const signal = {
 
             this.render();
         } catch (e) {
-            console.error('SignalFlow Error: fetchTrends', e);
+            console.error('Signal Flow Error: fetchTrends', e);
             this.render();
         }
     },
