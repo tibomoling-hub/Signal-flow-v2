@@ -27,5 +27,9 @@ export const supabase = {
     rpc(name, params) {
         const s = getSupabase();
         return s ? s.rpc(name, params) : Promise.reject("Supabase non initialisé");
+    },
+    get functions() {
+        const s = getSupabase();
+        return s ? s.functions : { invoke: async () => ({ error: "Supabase non initialisé" }) };
     }
 };

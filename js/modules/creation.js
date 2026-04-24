@@ -668,55 +668,40 @@ export const creation = {
 
     async handleRegenerate() {
         if (this.isRegenerating) return;
-
-        const REGENERATE_WEBHOOK_URL = 'https://hook.eu1.make.com/njj9og03bvurjkv268yt9wjld0q2vs7m';
         
         this.isRegenerating = true;
         this.render();
 
         try {
-            const payload = {
-                content_body: this.content.post.body
-            };
+            console.log(">>> Appel Edge Function 'regenerate-content'");
 
-            console.log(">>> Appel Webhook Make Régénération:", payload);
-
-            const response = await fetch(REGENERATE_WEBHOOK_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+            const { data, error } = await supabase.functions.invoke('regenerate-content', {
+                body: {
+                    content_body: this.content.post.body,
+                    tone: this.tone,
+                    goal: this.goal
+                }
             });
 
-            if (!response.ok) throw new Error("Erreur HTTP: " + response.status);
+            if (error) throw error;
 
-            const textResponse = await response.text();
-            let newContent = textResponse;
-            try {
-                // Tentative de parsing JSON si Make le renvoie formaté
-                const json = JSON.parse(textResponse);
-                if (json.content_body) newContent = json.content_body;
-                else if (json.new_content) newContent = json.new_content;
-                else if (json.text) newContent = json.text;
-            } catch(e) {
-                // Si non JSON, on utilise directement le texte
-            }
+            const newContent = data.result;
 
             if (newContent && newContent.trim().length > 0) {
                 this.content.post.body = newContent;
-                this.initialTone = this.tone; // Réinitialise l'état des options
+                this.initialTone = this.tone;
                 this.initialGoal = this.goal;
                 this.showToast("Le contenu a bien été régénéré", 'success');
             } else {
-                throw new Error("Réponse vide de Make");
+                throw new Error("Réponse vide de l'IA");
             }
         } catch (error) {
-            console.error(">>> Erreur de régénération:", error);
+            console.error(">>> Erreur de régénération via Edge Function:", error);
             this.showToast("Erreur lors de la régénération, veuillez réessayer", "error");
         } finally {
             this.isRegenerating = false;
             this.render();
             
-            // Mise \u00e0 jour manuelle du rich editor si n\u00e9cessaire (pour forcer le DOM)
             const editor = document.getElementById('rich-editor');
             if (editor) {
                 editor.innerText = this.content.post.body;
