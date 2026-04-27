@@ -13,7 +13,7 @@ export const signal = {
                 .from('trends')
                 .select(`
                     *,
-                    trend_source_item (
+                    trend_source_items (
                         source_items (
                             title,
                             url,
@@ -34,7 +34,7 @@ export const signal = {
 
             this.trends = (data || []).map(function(trend) {
                 return Object.assign({}, trend, {
-                    sources: (trend.trend_source_item || [])
+                    sources: (trend.trend_source_items || [])
                         .map(function(si) { return si.source_items; })
                         .filter(Boolean)
                 });
@@ -60,16 +60,28 @@ export const signal = {
         window.creation.setAiLoading(true);
 
         try {
-            // On récupère la session pour avoir l'ID de l'utilisateur
+            // 1. Récupération de la session
             const { data: { session } } = await supabase.auth.getSession();
-            const id_user = session?.user?.id || 'anonymous';
+            if (!session) throw new Error('Session non trouvée');
 
+            // 2. Récupération des infos utilisateur (id_user, tone, goal)
+            const { data: profile, error: profileError } = await supabase
+                .from('users')
+                .select('id_user, tone, goal')
+                .eq('id_auth_user', session.user.id)
+                .single();
+
+            if (profileError) throw profileError;
+
+            // 3. Appel au Webhook Make avec le payload complet
             const response = await fetch('https://hook.eu1.make.com/4o6kwqi31dmho63dfpycc7gonqhn3wgp', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
                     id_trend: trendId,
-                    id_user: id_user 
+                    id_user: profile.id_user,
+                    tone: profile.tone || 'Expert',
+                    goal: profile.goal || 'growth'
                 })
             });
 

@@ -60,16 +60,26 @@ export const creation = {
         // Gestion flexible : Make peut renvoyer un objet ou un tableau [Bundle]
         const payload = Array.isArray(data) ? data[0] : data;
 
-        // Validation stricte du payload
-        if (!payload || !payload.id_post) {
-            console.warn("SCHtroumf : Payload Make invalide ou ID_post manquant.", data);
-            this.clearContent();
+        console.log("🛠️ [Signal Flow] Réception contenu Make:", payload);
+
+        // 1. Cas : Contenu direct (nouveau format)
+        if (payload && payload.content) {
+            this.content.post.body = payload.content;
+            this.currentPostId = payload.id_post || null; // Optionnel
             this.setAiLoading(false);
+            this.render();
             return;
         }
 
-        // Si on a un ID, on va chercher dans la DB
-        this.fetchPostById(payload.id_post);
+        // 2. Cas : ID de post (ancien format / fallback)
+        if (payload && payload.id_post) {
+            this.fetchPostById(payload.id_post);
+            return;
+        }
+
+        console.warn("⚠️ [Signal Flow] Payload Make inconnu ou vide.", payload);
+        this.setAiLoading(false);
+        this.render();
     },
 
     async fetchPostById(postId) {

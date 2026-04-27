@@ -8,6 +8,7 @@ console.log("Signal Flow: main.js initializing...");
 const state = {
     user: null,
     currentView: 'auth', // 'auth', 'onboarding', 'dashboard'
+    authMode: 'login', // 'login' or 'signup'
 };
 
 // --- View Definitions ---
@@ -54,50 +55,85 @@ const views = {
             <div class="md:w-1/2 flex flex-col justify-center items-center p-12 md:p-24 bg-[#0a0a0c]">
                 <div class="max-w-md w-full space-y-10">
                     <div class="space-y-3">
-                        <h3 class="text-3xl font-bold text-white tracking-tight">Bienvenue</h3>
-                        <p class="text-secondary">Identifiez-vous pour accéder à votre console.</p>
+                        <h3 class="text-3xl font-bold text-white tracking-tight">${state.authMode === 'login' ? 'Bienvenue' : 'Créer un compte'}</h3>
+                        <p class="text-secondary">${state.authMode === 'login' ? 'Identifiez-vous pour accéder à votre console.' : 'Rejoignez Signal Flow et commencez l\'orchestration.'}</p>
                     </div>
 
-                    <form id="auth-form" class="space-y-6">
-                        <div id="auth-error" class="hidden p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-[11px] font-bold uppercase tracking-wider animate-in fade-in slide-in-from-top-2">
-                            Identifiants incorrects
-                        </div>
-                        
-                        <div class="space-y-2 group">
-                            <label for="email" class="text-detail ml-1 group-focus-within:text-blue-500 transition-colors">E-mail</label>
-                            <input type="email" id="email" placeholder="nom@agence.com" class="input-premium w-full transition-all" required>
-                        </div>
-                        
-                        <div class="space-y-2 group">
-                            <div class="flex justify-between items-center">
-                                <label for="password" class="text-detail ml-1 group-focus-within:text-blue-500 transition-colors">Mot de passe</label>
-                                <button type="button" onclick="window.togglePasswordVisibility(event)" class="text-[11px] text-zinc-500 hover:text-zinc-300 font-bold uppercase tracking-wider transition-colors">Afficher</button>
+                    ${state.authMode === 'login' ? `
+                        <form id="auth-form" class="space-y-6">
+                            <div id="auth-error" class="hidden p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-[11px] font-bold uppercase tracking-wider animate-in fade-in slide-in-from-top-2">
+                                Identifiants incorrects
                             </div>
-                            <div class="relative">
-                                <input type="password" id="password" placeholder="••••••••" class="input-premium w-full pr-12 transition-all" required>
-                                <div class="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-600 pointer-events-none">
-                                    <i data-lucide="lock" class="w-4 h-4"></i>
+                            
+                            <div class="space-y-2 group">
+                                <label for="email" class="text-detail ml-1 group-focus-within:text-blue-500 transition-colors">E-mail</label>
+                                <input type="email" id="email" placeholder="nom@agence.com" class="input-premium w-full transition-all" required>
+                            </div>
+                            
+                            <div class="space-y-2 group">
+                                <div class="flex justify-between items-center">
+                                    <label for="password" class="text-detail ml-1 group-focus-within:text-blue-500 transition-colors">Mot de passe</label>
+                                    <button type="button" onclick="window.togglePasswordVisibility(event, 'password')" class="text-[11px] text-zinc-500 hover:text-zinc-300 font-bold uppercase tracking-wider transition-colors">Afficher</button>
+                                </div>
+                                <div class="relative">
+                                    <input type="password" id="password" placeholder="••••••••" class="input-premium w-full pr-12 transition-all" required>
+                                    <div class="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-600 pointer-events-none">
+                                        <i data-lucide="lock" class="w-4 h-4"></i>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
 
-                        <div class="flex items-center justify-between px-1">
-                            <label class="flex items-center gap-3 cursor-pointer group">
-                                <div class="relative w-5 h-5">
-                                    <input type="checkbox" id="remember-me" class="peer sr-only">
-                                    <div class="w-full h-full rounded-md border border-white/10 bg-white/5 peer-checked:bg-blue-600 peer-checked:border-blue-500 transition-all"></div>
-                                    <i data-lucide="check" class="absolute inset-0 w-3 h-3 m-auto text-white opacity-0 peer-checked:opacity-100 transition-opacity"></i>
+                            <div class="flex items-center justify-between px-1">
+                                <label class="flex items-center gap-3 cursor-pointer group">
+                                    <div class="relative w-5 h-5">
+                                        <input type="checkbox" id="remember-me" class="peer sr-only">
+                                        <div class="w-full h-full rounded-md border border-white/10 bg-white/5 peer-checked:bg-blue-600 peer-checked:border-blue-500 transition-all"></div>
+                                        <i data-lucide="check" class="absolute inset-0 w-3 h-3 m-auto text-white opacity-0 peer-checked:opacity-100 transition-opacity"></i>
+                                    </div>
+                                    <span class="text-[11px] text-zinc-500 group-hover:text-zinc-300 font-bold uppercase tracking-[0.15em] transition-colors">Se souvenir de moi</span>
+                                </label>
+                                <a href="#" class="text-[11px] text-blue-500 hover:text-blue-400 font-bold uppercase tracking-wider transition-colors">Oublié ?</a>
+                            </div>
+                            
+                            <button type="submit" id="auth-submit" class="btn-neon w-full uppercase tracking-widest text-xs font-bold py-4 flex items-center justify-center gap-3">
+                                <span id="btn-text">Se connecter</span>
+                                <div id="btn-spinner" class="hidden w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+                            </button>
+                        </form>
+                    ` : `
+                        <form id="signup-form" class="space-y-6">
+                            <div id="auth-error" class="hidden p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-[11px] font-bold uppercase tracking-wider animate-in fade-in slide-in-from-top-2">
+                                Erreur d'inscription
+                            </div>
+                            
+                            <div class="space-y-2 group">
+                                <label for="signup-email" class="text-detail ml-1 group-focus-within:text-blue-500 transition-colors">E-mail</label>
+                                <input type="email" id="signup-email" placeholder="nom@agence.com" class="input-premium w-full transition-all" required>
+                            </div>
+                            
+                            <div class="space-y-2 group">
+                                <div class="flex justify-between items-center">
+                                    <label for="signup-password" class="text-detail ml-1 group-focus-within:text-blue-500 transition-colors">Mot de passe</label>
+                                    <button type="button" onclick="window.togglePasswordVisibility(event, 'signup-password')" class="text-[11px] text-zinc-500 hover:text-zinc-300 font-bold uppercase tracking-wider transition-colors">Afficher</button>
                                 </div>
-                                <span class="text-[11px] text-zinc-500 group-hover:text-zinc-300 font-bold uppercase tracking-[0.15em] transition-colors">Se souvenir de moi</span>
-                            </label>
-                            <a href="#" class="text-[11px] text-blue-500 hover:text-blue-400 font-bold uppercase tracking-wider transition-colors">Oublié ?</a>
-                        </div>
-                        
-                        <button type="submit" id="auth-submit" class="btn-neon w-full uppercase tracking-widest text-xs font-bold py-4 flex items-center justify-center gap-3">
-                            <span id="btn-text">Se connecter</span>
-                            <div id="btn-spinner" class="hidden w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
-                        </button>
-                    </form>
+                                <input type="password" id="signup-password" placeholder="••••••••" class="input-premium w-full transition-all" required>
+                            </div>
+
+                            <div class="space-y-2 group">
+                                <label for="signup-confirm" class="text-detail ml-1 group-focus-within:text-blue-500 transition-colors">Confirmer le mot de passe</label>
+                                <input type="password" id="signup-confirm" placeholder="••••••••" class="input-premium w-full transition-all" required>
+                            </div>
+                            
+                            <button type="submit" id="signup-submit" class="btn-neon w-full uppercase tracking-widest text-xs font-bold py-4 flex items-center justify-center gap-3">
+                                <span id="signup-btn-text">Valider l'inscription</span>
+                                <div id="signup-btn-spinner" class="hidden w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+                            </button>
+
+                            <button type="button" id="back-to-login" class="w-full text-center text-[11px] text-zinc-500 hover:text-zinc-300 font-bold uppercase tracking-widest transition-colors py-2">
+                                ← Retour à la connexion
+                            </button>
+                        </form>
+                    `}
 
                     <div class="relative py-4 flex items-center justify-center">
                         <div class="absolute inset-0 flex items-center"><div class="w-full border-t border-white/5"></div></div>
@@ -115,9 +151,11 @@ const views = {
                         </button>
                     </div>
 
-                    <p class="text-center text-secondary">
-                        Nouveau ici ? <a href="#" class="text-blue-500 hover:text-blue-400 font-bold tracking-wide transition-colors underline underline-offset-4">Créer un compte</a>
-                    </p>
+                    ${state.authMode === 'login' ? `
+                        <p class="text-center text-secondary">
+                            Nouveau ici ? <button id="switch-to-signup" class="text-blue-500 hover:text-blue-400 font-bold tracking-wide transition-colors underline underline-offset-4">Créer un compte</button>
+                        </p>
+                    ` : ''}
                 </div>
             </div>
         </div>
@@ -160,10 +198,13 @@ function attachEventListeners() {
     const googleBtn = document.getElementById('login-google');
     const linkedinBtn = document.getElementById('login-linkedin');
     const authForm = document.getElementById('auth-form');
+    const signupForm = document.getElementById('signup-form');
+    const switchToSignup = document.getElementById('switch-to-signup');
+    const backToLogin = document.getElementById('back-to-login');
 
     // Helper visibility
-    window.togglePasswordVisibility = (e) => {
-        const input = document.getElementById('password');
+    window.togglePasswordVisibility = (e, inputId) => {
+        const input = document.getElementById(inputId);
         const btn = e.target;
         if (input.type === 'password') {
             input.type = 'text';
@@ -174,7 +215,22 @@ function attachEventListeners() {
         }
     };
 
-    const navigateToOnboarding = () => {
+    if (switchToSignup) {
+        switchToSignup.onclick = () => {
+            state.authMode = 'signup';
+            render();
+        };
+    }
+
+    if (backToLogin) {
+        backToLogin.onclick = () => {
+            state.authMode = 'login';
+            render();
+        };
+    }
+
+    const navigateToOnboarding = async () => {
+        await onboarding.ensureUserExists();
         state.currentView = 'onboarding';
         render();
     };
@@ -182,6 +238,7 @@ function attachEventListeners() {
     if (googleBtn) googleBtn.onclick = navigateToOnboarding;
     if (linkedinBtn) linkedinBtn.onclick = navigateToOnboarding;
     
+    // LOGIN FORM HANDLER
     if (authForm) {
         authForm.onsubmit = async (e) => {
             e.preventDefault();
@@ -242,10 +299,105 @@ function attachEventListeners() {
             }
         };
     }
+
+    // SIGNUP FORM HANDLER
+    if (signupForm) {
+        signupForm.onsubmit = async (e) => {
+            e.preventDefault();
+            
+            const email = document.getElementById('signup-email').value;
+            const password = document.getElementById('signup-password').value;
+            const confirm = document.getElementById('signup-confirm').value;
+            const errorMsg = document.getElementById('auth-error');
+            const submitBtn = document.getElementById('signup-submit');
+            const btnText = document.getElementById('signup-btn-text');
+            const btnSpinner = document.getElementById('signup-btn-spinner');
+
+            // Reset UI
+            errorMsg.classList.add('hidden');
+
+            // Validation
+            if (!email.includes('@') || !email.includes('.')) {
+                errorMsg.innerText = "Format d'email invalide";
+                errorMsg.classList.remove('hidden');
+                return;
+            }
+            if (password !== confirm) {
+                errorMsg.innerText = "Les mots de passe ne correspondent pas";
+                errorMsg.classList.remove('hidden');
+                return;
+            }
+            if (password.length < 6) {
+                errorMsg.innerText = "Le mot de passe doit faire 6 caractères minimum";
+                errorMsg.classList.remove('hidden');
+                return;
+            }
+
+            // Loading state
+            submitBtn.disabled = true;
+            btnText.innerText = 'Création du compte...';
+            btnSpinner.classList.remove('hidden');
+
+            try {
+                // 1. Sign Up Auth
+                const { data, error } = await supabase.auth.signUp({
+                    email,
+                    password
+                });
+
+                if (error) throw error;
+                if (!data.user) throw new Error("Erreur lors de la création de l'utilisateur");
+
+                console.log("Signal Flow: Auth Sign Up success for", data.user.email);
+
+                // 2. Verification of DB row (Created by Trigger)
+                console.log("Signal Flow: Waiting for Trigger to create DB row...");
+                
+                // Petit délai pour laisser le temps au Trigger SQL de s'exécuter
+                await new Promise(resolve => setTimeout(resolve, 1000));
+
+                const { data: dbRow, error: dbError } = await supabase
+                    .from('users')
+                    .select('id_user')
+                    .eq('id_auth_user', data.user.id)
+                    .maybeSingle();
+
+                if (dbError || !dbRow) {
+                    console.warn("⚠️ Signal Flow: DB row not found yet. The onboarding will handle the creation if missing.");
+                } else {
+                    console.log("✅ Signal Flow: DB row verified (internal ID:", dbRow.id_user + ")");
+                }
+
+                // 3. Success logic
+                state.user = data.user;
+                state.currentView = 'onboarding';
+                render();
+
+            } catch (err) {
+                console.error("Signal Flow: Sign Up error", err.message);
+                errorMsg.innerText = err.message;
+                errorMsg.classList.remove('hidden');
+            } finally {
+                submitBtn.disabled = false;
+                btnText.innerText = 'Valider l\'inscription';
+                btnSpinner.classList.add('hidden');
+            }
+        };
+    }
 }
 
 // --- Initialization ---
 async function init() {
+    // Écouteur de changement d'état d'auth (Redirection automatique)
+    supabase.auth.onAuthStateChange((event, session) => {
+        console.log("🔔 [Signal Flow] Auth Event:", event);
+        if (event === 'SIGNED_OUT' || !session) {
+            state.user = null;
+            state.currentView = 'auth';
+            render();
+        }
+    });
+
     window.addEventListener('onboarding-finished', () => {
         state.currentView = 'dashboard';
         render();

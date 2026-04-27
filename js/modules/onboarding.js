@@ -79,12 +79,6 @@ export const onboarding = {
     async ensureUserExists() {
         const { data: { session } } = await supabase.auth.getSession();
         let authId = session?.user?.id;
-        
-        // DEV FALLBACK
-        if (!authId && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
-            console.warn("DEBUG: Aucun ID session. Utilisation de l'ID de test.");
-            authId = '00000000-0000-0000-0000-000000000000';
-        }
 
         if (!authId) {
             console.error("Erreur de synchronisation du signal : ID utilisateur introuvable. Veuillez vous reconnecter.");
@@ -107,7 +101,7 @@ export const onboarding = {
         }
 
         if (!existing) {
-            console.log("[Signal Flow DB] Création d'une nouvelle ligne utilisateur...");
+            console.log("🛠️ [Signal Flow] Création de secours : Ligne utilisateur manquante dans 'users', création en cours...");
             const { data: inserted, error: insertError } = await supabase
                 .from('users')
                 .insert({
@@ -118,10 +112,10 @@ export const onboarding = {
                 .single();
 
             if (insertError) {
-                console.error("Error creating user row:", insertError);
+                console.error("❌ [Signal Flow] Échec de la création de secours :", insertError.message);
             } else {
                 this.id_user = inserted.id_user;
-                console.log("[Signal Flow DB] Ligne créée avec id_user:", this.id_user);
+                console.log("✅ [Signal Flow] Ligne créée avec succès (id_user:", this.id_user + ")");
             }
         } else {
             this.id_user = existing.id_user;
