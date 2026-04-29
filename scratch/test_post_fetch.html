@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Post Fetch - Signal Flow</title>
+    <style>
+        body { font-family: monospace; background: #111; color: #0f0; padding: 24px; }
+        .log { margin: 4px 0; padding: 4px 8px; border-left: 3px solid #333; }
+        .log.ok { border-color: #0f0; color: #0f0; }
+        .log.err { border-color: #f00; color: #f00; }
+        .log.warn { border-color: #ff0; color: #ff0; }
+        .log.info { border-color: #0af; color: #0af; }
+        input { background: #222; color: #fff; border: 1px solid #444; padding: 8px 12px; font-family: monospace; font-size: 14px; width: 400px; }
+        button { background: #1a56f0; color: #fff; border: none; padding: 8px 18px; font-family: monospace; cursor: pointer; margin-left: 8px; }
+        pre { background: #1a1a1a; padding: 12px; border-radius: 4px; overflow: auto; color: #ccc; max-height: 400px; }
+        h2 { color: #0af; }
+    </style>
+</head>
+<body>
+    <h2>🔬 Signal Flow — Diagnostic Post Fetch</h2>
+    <div>
+        <input type="text" id="post-id" value="184321cd-b021-47d9-ad4b-417726e98256" placeholder="id_post UUID...">
+        <button onclick="runTest()">▶ Lancer le test</button>
+    </div>
+    <hr style="border-color:#333; margin: 16px 0;">
+    <div id="logs"></div>
+    <pre id="result">En attente du test...</pre>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script>
+        const SUPABASE_URL = "https://ytstevgskzzzxxzyeehx.supabase.co";
+        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl0c3Rldmdza3p6enh4enllZWh4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ4NzY5MDgsImV4cCI6MjA5MDQ1MjkwOH0.S7SYhso2r-t4__2idgvGgl1qZ162pZhOtJnc8T0Vbps";
+        const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        function log(msg, type = 'info') {
+            const div = document.createElement('div');
+            div.className = `log ${type}`;
+            div.innerText = msg;
+            document.getElementById('logs').appendChild(div);
+            console.log(msg);
+        }
+
+        function showResult(data) {
+            document.getElementById('result').innerText = JSON.stringify(data, null, 2);
+        }
+
+        async function runTest() {
+            document.getElementById('logs').innerHTML = '';
+            document.getElementById('result').innerText = 'En cours...';
+            const postId = document.getElementById('post-id').value.trim();
+
+            // 1. Check session
+            log('📡 Vérification de la session...', 'info');
+            const { data: { session } } = await sb.auth.getSession();
+            if (session) {
+                log(`✅ Session active pour : ${session.user.email}`, 'ok');
+            } else {
+                log('⚠️ Aucune session active — vous n\'êtes pas connecté. Le RLS pourrait bloquer l\'accès.', 'warn');
+            }
+
+            // 2. Test simple select * from posts limit 1
+            log('📡 Test accès global à la table posts (limit 1)...', 'info');
+            const { data: all, error: allErr } = await sb.from('posts').select('id_post, title, body_content, tone_post, goal_post').limit(1);
+            if (allErr) {
+                log(`❌ Erreur accès global: ${allErr.message}`, 'err');
+            } else {
+                log(`✅ Accès global OK — ${all.length} ligne(s) visibles.`, 'ok');
+                if (all.length > 0) showResult(all[0]);
+            }
+
+            // 3. Fetch by id_post
+            log(`📡 Recherche par id_post = ${postId}...`, 'info');
+            const { data: post, error: postErr } = await sb
+                .from('posts')
+                .select('id_post, title, body_content, content_body, tone_post, goal_post, tone, goal')
+                .eq('id_post', postId)
+                .maybeSingle();
+
+            if (postErr) {
+                log(`❌ Erreur par id_post: ${postErr.message}`, 'err');
+            } else if (post) {
+                log('✅ Post trouvé par id_post !', 'ok');
+                showResult(post);
+            } else {
+                log('⚠️ Post non trouvé par id_post (null). Vérifiez le RLS ou la valeur de l\'ID.', 'warn');
+            }
+
+            log('--- Test terminé ---', 'info');
+        }
+    </script>
+</body>
+</html>

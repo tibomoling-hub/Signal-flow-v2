@@ -6,14 +6,14 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANO
 
 async function check() {
     const { data, error } = await supabase
-        .from('users')
+        .from('posts')
         .select('*')
         .limit(1);
     
     if (error) {
         console.error("Error:", error);
     } else {
-        console.log("Columns in 'users' table:", Object.keys(data[0] || {}));
+        console.log("Columns in 'posts' table:", Object.keys(data[0] || {}));
     }
 }
 

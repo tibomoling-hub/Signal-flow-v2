@@ -16,7 +16,7 @@ export const onboarding = {
     totalSteps: 6,
     data: {
         firstName: '',
-        brand: '',
+        lastName: '',
         niche: [],
         linkedinUrl: '',
         topicsActive: true,
@@ -24,11 +24,15 @@ export const onboarding = {
         topicsLoaded: false,
         audienceSize: '0-1k',
         frequency: 'daily',
-        goal: 'grow',
-        tone: 'Expert',
+        goal: [],
+        tone: [],
         formats: [],
         rgpd: false,
-        description: '' // Added for Step 02
+        description: '',
+        directionLoaded: false,
+        availableTones: [],
+        availableGoals: [],
+        optionsLoaded: false
     },
     id_user: null, // Primary key from DB
     id_auth_user: null, // UUID from Auth provider
@@ -61,11 +65,19 @@ export const onboarding = {
         this.errors = {};
         if (this.step === 2) {
             if (!this.data.firstName.trim()) this.errors.firstName = "Le prénom est requis.";
-            if (!this.data.brand.trim()) this.errors.brand = "Le nom de marque est requis.";
+            if (!this.data.lastName.trim()) this.errors.lastName = "Le nom est requis.";
+        } else if (this.step === 3) {
+            if (this.data.niche.length < 1) this.errors.niche = "Veuillez ajouter au moins une thématique.";
+            if (this.data.niche.length > 3) this.errors.niche = "Maximum 3 thématiques autorisées.";
         } else if (this.step === 4) {
             if (this.data.linkedinUrl && !isValidSocialUrl(this.data.linkedinUrl)) {
                 this.errors.linkedin = "URL LinkedIn invalide.";
             }
+        } else if (this.step === 5) {
+            if (this.data.tone.length < 1) this.errors.tone = "Veuillez ajouter au moins un ton.";
+            if (this.data.tone.length > 3) this.errors.tone = "Maximum 3 tons autorisés.";
+            if (this.data.goal.length < 1) this.errors.goal = "Veuillez ajouter au moins un objectif.";
+            if (this.data.goal.length > 3) this.errors.goal = "Maximum 3 objectifs autorisés.";
         } else if (this.step === 6) {
             if (!this.data.rgpd) this.errors.rgpd = "Acceptation requise.";
         }
@@ -133,11 +145,10 @@ export const onboarding = {
         switch(stepNumber) {
             case 2:
                 updateData = {
-                    full_name: this.data.firstName,
-                    company: this.data.brand,
-                    description: this.data.description || ''
+                    first_name: this.data.firstName,
+                    last_name: this.data.lastName
                 };
-                columns = "full_name, company, description";
+                columns = "first_name, last_name";
                 break;
             case 3:
                 updateData = {
@@ -147,14 +158,14 @@ export const onboarding = {
                 break;
             case 4:
                 updateData = {
-                    linkedin_url: this.data.linkedinUrl
+                    linkedin_link: this.data.linkedinUrl
                 };
-                columns = "linkedin_url";
+                columns = "linkedin_link";
                 break;
             case 5:
                 updateData = {
-                    tone: this.data.tone,
-                    goal: this.data.goal
+                    tone: this.data.tone.join(', '),
+                    goal: this.data.goal.join(', ')
                 };
                 columns = "tone, goal";
                 break;
@@ -195,7 +206,7 @@ export const onboarding = {
         if (!error && finalProfile) {
             console.log(`[Signal Flow DB] Synchronisation Finale réussie pour id_user: ${this.id_user}`);
             console.log(`[Signal Flow DB] État final :`, {
-                identite: !!(finalProfile.full_name && finalProfile.company),
+                identite: !!(finalProfile.first_name && finalProfile.last_name),
                 topics: !!finalProfile.topic,
                 vecteur: !!finalProfile.linkedin_url,
                 direction: !!(finalProfile.tone && finalProfile.goal),
@@ -207,10 +218,18 @@ export const onboarding = {
     addTopic() {
         const input = document.getElementById('topic-input');
         const val = input.value.trim();
-        if (val && !this.data.niche.includes(val)) {
-            this.data.niche.push(val);
-            input.value = '';
-            this.render();
+        if (val) {
+            if (this.data.niche.length >= 3) {
+                this.errors.niche = "Limite de 3 thématiques atteinte.";
+                this.render();
+                return;
+            }
+            if (!this.data.niche.includes(val)) {
+                this.data.niche.push(val);
+                input.value = '';
+                this.errors.niche = null;
+                this.render();
+            }
         }
     },
 
@@ -219,45 +238,33 @@ export const onboarding = {
         this.render();
     },
 
-    setTone(tone) {
-        this.data.tone = tone;
-        this.render();
-    },
-
-    addTone() {
-        const input = document.getElementById('new-tone-input');
-        const val = input.value.trim();
-        if (val && !this.availableTones.includes(val)) {
-            this.availableTones.push(val);
-            this.data.tone = val;
-            this.render();
+    toggleTone(toneId) {
+        if (this.data.tone.includes(toneId)) {
+            this.data.tone = this.data.tone.filter(id => id !== toneId);
+            this.errors.tone = null;
+        } else {
+            if (this.data.tone.length >= 3) {
+                this.errors.tone = "Limite de 3 tons atteinte.";
+            } else {
+                this.data.tone.push(toneId);
+                this.errors.tone = null;
+            }
         }
-    },
-
-    setGoal(goal) {
-        this.data.goal = goal;
         this.render();
     },
 
-    addGoal() {
-        const input = document.getElementById('new-goal-input');
-        const val = input.value.trim();
-        if (val && !this.availableGoals.includes(val)) {
-            this.availableGoals.push(val);
-            this.data.goal = val;
-            this.render();
+    toggleGoal(goalId) {
+        if (this.data.goal.includes(goalId)) {
+            this.data.goal = this.data.goal.filter(id => id !== goalId);
+            this.errors.goal = null;
+        } else {
+            if (this.data.goal.length >= 3) {
+                this.errors.goal = "Limite de 3 objectifs atteinte.";
+            } else {
+                this.data.goal.push(goalId);
+                this.errors.goal = null;
+            }
         }
-    },
-
-    removeGoal(index) {
-        this.availableGoals.splice(index, 1);
-        if (this.data.goal === this.availableGoals[index]) this.data.goal = this.availableGoals[0] || '';
-        this.render();
-    },
-
-    removeAvailableTone(index) {
-        this.availableTones.splice(index, 1);
-        if (this.data.tone === this.availableTones[index]) this.data.tone = this.availableTones[0] || '';
         this.render();
     },
 
@@ -272,23 +279,9 @@ export const onboarding = {
         let authId = null;
         
         try {
-            // LOG A: Auth Check
             const { data: { session } } = await supabase.auth.getSession();
-            console.log("LOG A (Auth Check):", session ? "Session active" : "Aucune session");
-
             authId = session?.user?.id;
-            
-            // LOG B: ID Verification
-            console.log("LOG B (ID Verification): id_auth_user =", authId);
-
-            // Fallback for Dev if no session (must be a valid UUID format)
-            if (!authId) {
-                console.warn("DEBUG: Aucun ID session. Utilisation de l'ID de test (UUID blanc).");
-                authId = '00000000-0000-0000-0000-000000000000';
-            }
-
-            // LOG C: Query Trace
-            console.log(`LOG C (Query Trace): SELECT topic FROM users WHERE id_auth_user = '${authId}'`);
+            if (!authId) authId = '00000000-0000-0000-0000-000000000000';
 
             const { data: profile, error } = await supabase
                 .from('users')
@@ -296,25 +289,111 @@ export const onboarding = {
                 .eq('id_auth_user', authId)
                 .single();
 
-            if (error && error.code !== 'PGRST116') throw error; // PGRST116 is "No rows found"
+            if (error && error.code !== 'PGRST116') throw error;
 
             if (profile && profile.topic) {
                 const rawTopics = Array.isArray(profile.topic) ? profile.topic : (typeof profile.topic === 'string' ? profile.topic.split(',').map(s => s.trim()) : []);
-                const cleanTopics = rawTopics.filter(t => t);
-                this.data.niche = cleanTopics;
-                console.log("DEBUG: Données récupérées avec succès:", cleanTopics);
-            } else {
-                console.log("DEBUG: Connexion établie mais colonne topic vide");
-                this.data.niche = [];
+                this.data.niche = rawTopics.filter(t => t);
             }
             this.topicsLoaded = true;
             this.render();
         } catch (e) {
             console.error("Signal Flow: Error loading topics", e.message);
-            this.fetchError = "ERREUR SESSION : Utilisateur non identifié";
             this.topicsLoaded = true;
             this.render();
         }
+    },
+
+    async loadDirectionDataFromDB() {
+        if (this.data.directionLoaded) return;
+        this.fetchError = null;
+        let authId = null;
+        
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            authId = session?.user?.id;
+            
+            if (!authId) {
+                console.warn("DEBUG: Aucun ID session pour la direction. Utilisation de l'ID de test.");
+                authId = '00000000-0000-0000-0000-000000000000';
+            }
+
+            console.log(`[Signal Flow] Chargement direction pour: ${authId}`);
+
+            const { data: profile, error } = await supabase
+                .from('users')
+                .select('tone, goal')
+                .eq('id_auth_user', authId)
+                .single();
+
+            if (error && error.code !== 'PGRST116') throw error;
+
+            if (profile) {
+                if (profile.tone) {
+                    const tones = typeof profile.tone === 'string' ? profile.tone.split(',').map(s => s.trim()) : (Array.isArray(profile.tone) ? profile.tone : []);
+                    this.data.tone = tones.filter(t => t);
+                    console.log("DEBUG: Tons chargés:", this.data.tone);
+                }
+                if (profile.goal) {
+                    const goals = typeof profile.goal === 'string' ? profile.goal.split(',').map(s => s.trim()) : (Array.isArray(profile.goal) ? profile.goal : []);
+                    this.data.goal = goals.filter(g => g);
+                    console.log("DEBUG: Objectifs chargés:", this.data.goal);
+                }
+            }
+            
+            this.data.directionLoaded = true;
+        } catch (e) {
+            console.error("Signal Flow: Error loading direction data", e.message);
+            this.data.directionLoaded = true;
+        }
+
+        // Charge également les options disponibles depuis les tables tones/goals
+        await this.loadTonesAndGoalsOptions();
+    },
+
+    async loadTonesAndGoalsOptions() {
+        if (this.data.optionsLoaded) return;
+
+        try {
+            // Chargement des tons disponibles depuis la table 'tones'
+            const { data: tonesData, error: tonesErr } = await supabase
+                .from('tones')
+                .select('*')
+                .order('name', { ascending: true });
+
+            if (!tonesErr && tonesData && tonesData.length > 0) {
+                this.data.availableTones = tonesData.map(t => ({
+                    id: t.id_tone || t.id || t.id_tones, // Attempting to find the correct ID column
+                    name: t.name || t.label || t.tone || t.value || JSON.stringify(t)
+                }));
+                console.log('✅ [Onboarding] Tons chargés depuis la DB:', this.data.availableTones);
+            } else if (tonesErr) {
+                console.error('❌ [Onboarding] Erreur chargement tones:', tonesErr.message);
+            }
+
+            // Chargement des objectifs disponibles depuis la table 'goals'
+            const { data: goalsData, error: goalsErr } = await supabase
+                .from('goals')
+                .select('*')
+                .order('name', { ascending: true });
+
+            if (!goalsErr && goalsData && goalsData.length > 0) {
+                this.data.availableGoals = goalsData.map(g => ({
+                    id: g.id_goal || g.id || g.id_goals, // Attempting to find the correct ID column
+                    name: g.name || g.label || g.goal || g.value || JSON.stringify(g)
+                }));
+                console.log('✅ [Onboarding] Objectifs chargés depuis la DB:', this.data.availableGoals);
+            } else if (goalsErr) {
+                console.error('❌ [Onboarding] Erreur chargement goals:', goalsErr.message);
+            }
+
+            this.data.optionsLoaded = true;
+        } catch (e) {
+            console.error('❌ [Onboarding] Erreur chargement options:', e.message);
+            this.data.optionsLoaded = true;
+        }
+
+        this.render();
     },
 
     toggleLinkedIn() {
@@ -461,21 +540,16 @@ export const onboarding = {
                             <div class="w-full max-w-md ml-auto space-y-10 bg-zinc-900/40 p-10 rounded-[2.5rem] border border-white/5 shadow-2xl relative overflow-hidden group">
                                 <div class="space-y-8 relative z-10">
                                     <div class="space-y-3 group/input">
-                                        <label class="text-[10px] font-mono text-zinc-500 uppercase tracking-[0.2em] ml-1 group-focus-within/input:text-blue-400 transition-colors font-bold">Prénom de l'émetteur</label>
+                                        <label class="text-[10px] font-mono text-zinc-500 uppercase tracking-[0.2em] ml-1 group-focus-within/input:text-blue-400 transition-colors font-bold">Prénom</label>
                                         <input type="text" id="onb-firstname" value="${this.data.firstName}" placeholder="Votre prénom" 
                                                class="w-full bg-zinc-950 border border-white/10 rounded-2xl px-6 py-5 text-white placeholder-zinc-800 outline-none focus:ring-1 focus:ring-cyan-500/50 focus:border-cyan-500/50 transition-all font-medium text-sm">
                                         ${errorMsg('firstName')}
                                     </div>
                                     <div class="space-y-3 group/input">
-                                        <label class="text-[10px] font-mono text-zinc-500 uppercase tracking-[0.2em] ml-1 group-focus-within/input:text-blue-400 transition-colors font-bold">Nom du média / Marque</label>
-                                        <input type="text" id="onb-brand" value="${this.data.brand}" placeholder="Ex: EchoTech" 
+                                        <label class="text-[10px] font-mono text-zinc-500 uppercase tracking-[0.2em] ml-1 group-focus-within/input:text-blue-400 transition-colors font-bold">Nom</label>
+                                        <input type="text" id="onb-lastname" value="${this.data.lastName}" placeholder="Votre nom" 
                                                class="w-full bg-zinc-950 border border-white/10 rounded-2xl px-6 py-5 text-white placeholder-zinc-800 outline-none focus:ring-1 focus:ring-cyan-500/50 focus:border-cyan-500/50 transition-all font-medium text-sm">
-                                        ${errorMsg('brand')}
-                                    </div>
-                                    <div class="space-y-3 group/input">
-                                        <label class="text-[10px] font-mono text-zinc-500 uppercase tracking-[0.2em] ml-1 group-focus-within/input:text-blue-400 transition-colors font-bold">Descriptif / Mission</label>
-                                        <textarea id="onb-description" placeholder="Décrivez votre vision..." 
-                                                  class="w-full bg-zinc-950 border border-white/10 rounded-2xl px-6 py-5 text-white placeholder-zinc-800 outline-none focus:ring-1 focus:ring-cyan-500/50 focus:border-cyan-500/50 transition-all font-medium text-sm h-32 resize-none">${this.data.description}</textarea>
+                                        ${errorMsg('lastName')}
                                     </div>
                                 </div>
                             </div>
@@ -508,6 +582,21 @@ export const onboarding = {
                             <div class="w-full max-w-md ml-auto space-y-10 bg-zinc-900/40 p-10 rounded-[2.5rem] border border-white/5 shadow-2xl relative overflow-hidden group">
                                 <div class="relative z-10 space-y-8">
                                     <div class="space-y-4">
+                                        <label class="text-[10px] font-mono text-zinc-500 uppercase tracking-[0.2em] ml-1 font-bold">Ajouter une thématique (1 à 3 max)</label>
+                                        <div class="relative group/input">
+                                            <div class="relative">
+                                                <input type="text" id="topic-input" placeholder="ajouter une thématique..." 
+                                                       class="w-full bg-zinc-950 border border-white/10 rounded-2xl px-6 py-5 pr-14 text-white placeholder-zinc-800 outline-none focus:ring-1 focus:ring-blue-500/50 transition-all font-medium text-sm"
+                                                       onkeypress="if(event.key === 'Enter') window.onboarding.addTopic()">
+                                                <button onclick="window.onboarding.addTopic()" class="absolute right-4 top-1/2 -translate-y-1/2 text-blue-500 hover:text-blue-400">
+                                                    <i data-lucide="plus" class="w-5 h-5"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                        ${errorMsg('niche')}
+                                    </div>
+
+                                    <div class="space-y-4">
                                         <label class="text-[10px] font-mono text-zinc-500 uppercase tracking-[0.2em] ml-1 font-bold">Spectre de détection</label>
                                         <div id="topic-container" class="flex flex-wrap gap-2 min-h-[140px] p-4 bg-zinc-950/50 border border-white/10 rounded-2xl items-start">
                                             ${!this.topicsLoaded ? '<div class="flex items-center gap-3 text-zinc-700 p-2 animate-pulse"><i data-lucide="refresh-cw" class="w-3.5 h-3.5 animate-spin"></i><span class="text-[10px] uppercase tracking-widest font-mono">Synchronisation...</span></div>' : ''}
@@ -523,17 +612,6 @@ export const onboarding = {
                                     </div>
 
                                     ${this.fetchError ? `<div class="text-center"><p class="text-xs font-mono text-red-500 opacity-50 uppercase tracking-tighter">${this.fetchError}</p></div>` : ''}
-
-                                    <div class="space-y-3 relative group/input">
-                                        <div class="relative">
-                                            <input type="text" id="topic-input" placeholder="Ajouter une fréquence..." 
-                                                   class="w-full bg-zinc-950 border border-white/10 rounded-2xl px-6 py-5 pr-14 text-white placeholder-zinc-800 outline-none focus:ring-1 focus:ring-blue-500/50 transition-all font-medium text-sm"
-                                                   onkeypress="if(event.key === 'Enter') window.onboarding.addTopic()">
-                                            <button onclick="window.onboarding.addTopic()" class="absolute right-4 top-1/2 -translate-y-1/2 text-blue-500 hover:text-blue-400">
-                                                <i data-lucide="plus" class="w-5 h-5"></i>
-                                            </button>
-                                        </div>
-                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -566,9 +644,11 @@ export const onboarding = {
                         </div>
                     </div>
                 `;
-            case 5:
-                if (!this.availableTones) this.availableTones = ['Expert', 'Punchy', 'Éducatif', 'Personnel'];
-                if (!this.availableGoals) this.availableGoals = ['Visibilité', 'Expertise', 'Conversion', 'Engagement'];
+            case 5: {
+                if (!this.data.directionLoaded) this.loadDirectionDataFromDB();
+
+                const toneOptions = this.data.availableTones.length > 0 ? this.data.availableTones : [];
+                const goalOptions = this.data.availableGoals.length > 0 ? this.data.availableGoals : [];
 
                 return `
                     <div class="flex flex-col items-center max-w-5xl mx-auto w-full animate-in fade-in slide-in-from-bottom-8 duration-1000">
@@ -592,63 +672,70 @@ export const onboarding = {
                             
                             <!-- Right: Panneau de Contrôle -->
                             <div class="w-full max-w-md ml-auto flex flex-col gap-6">
+
                                 <!-- Section TON -->
-                                <div class="bg-zinc-900/40 p-8 rounded-[2.5rem] border border-white/5 shadow-2xl relative overflow-hidden group">
-                                    <div class="relative z-10 space-y-6">
-                                        <label class="text-[10px] font-mono text-zinc-500 uppercase tracking-[0.3em] font-bold">Modulation du Ton</label>
-                                        <div class="flex flex-wrap gap-2">
-                                            ${this.availableTones.map((t, idx) => `
-                                                <div onclick="window.onboarding.setTone('${t}')" 
-                                                     class="relative flex items-center gap-2 px-4 py-2 rounded-xl border transition-all cursor-pointer text-[10px] font-black uppercase tracking-widest group/toggle ${this.data.tone === t ? 'bg-blue-500/10 border-blue-500 text-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.2)]' : 'bg-white/5 border-white/5 text-zinc-500 hover:border-white/10'}">
-                                                    <span>${t}</span>
-                                                    <button onclick="event.stopPropagation(); window.onboarding.removeAvailableTone(${idx})" 
-                                                            class="ml-2 opacity-50 hover:opacity-100 hover:scale-110 hover:text-red-500 transition-all">
-                                                        <i data-lucide="x" class="w-3 h-3"></i>
-                                                    </button>
-                                                </div>
-                                            `).join('')}
-                                        </div>
-                                        <div class="relative">
-                                            <input type="text" id="new-tone-input" placeholder="Ajouter un ton personnalisé..." 
-                                                   class="w-full bg-zinc-950 border border-white/10 rounded-xl px-4 py-3 pr-12 text-white placeholder-zinc-800 outline-none focus:ring-1 focus:ring-blue-500/50 transition-all text-xs"
-                                                   onkeypress="if(event.key === 'Enter') window.onboarding.addTone()">
-                                            <button onclick="window.onboarding.addTone()" class="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-blue-500 hover:text-blue-400">
-                                                <i data-lucide="plus" class="w-4 h-4"></i>
-                                            </button>
-                                        </div>
+                                <div class="bg-zinc-900/40 p-8 rounded-[2.5rem] border border-white/5 shadow-2xl">
+                                    <div class="space-y-5">
+                                        <label class="text-[10px] font-mono text-zinc-500 uppercase tracking-[0.3em] font-bold">Modulation du Ton (1 à 3 max)</label>
+                                        ${errorMsg('tone')}
+                                        
+                                        ${
+                                            !this.data.optionsLoaded
+                                            ? '<div class="flex gap-2"><div class="h-8 w-20 bg-white/5 rounded-xl animate-pulse"></div><div class="h-8 w-24 bg-white/5 rounded-xl animate-pulse"></div></div>'
+                                            : toneOptions.length === 0
+                                            ? '<p class="text-zinc-600 text-[10px] italic">Aucun ton disponible en base de données.</p>'
+                                            : `<div class="flex flex-wrap gap-2">
+                                                ${toneOptions.map(t => {
+                                                    const isSelected = this.data.tone.includes(t.id);
+                                                    return `<button
+                                                        onclick="window.onboarding.toggleTone('${t.id}')"
+                                                        class="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all duration-200 border
+                                                        ${ isSelected
+                                                            ? 'bg-blue-600 border-blue-500 text-white shadow-[0_0_12px_rgba(59,130,246,0.4)]'
+                                                            : 'bg-white/5 border-white/10 text-zinc-400 hover:border-blue-500/40 hover:text-white'
+                                                        }">
+                                                        ${t.name}
+                                                    </button>`;
+                                                }).join('')}
+                                            </div>`
+                                        }
                                     </div>
                                 </div>
 
                                 <!-- Section OBJECTIF -->
-                                <div class="bg-zinc-900/40 p-8 rounded-[2.5rem] border border-white/5 shadow-2xl relative overflow-hidden group">
-                                    <div class="relative z-10 space-y-6">
-                                        <label class="text-[10px] font-mono text-zinc-500 uppercase tracking-[0.3em] font-bold">Objectif Stratégique</label>
-                                        <div class="flex flex-wrap gap-2">
-                                            ${this.availableGoals.map((g, idx) => `
-                                                <div onclick="window.onboarding.setGoal('${g}')" 
-                                                     class="relative flex items-center gap-2 px-4 py-2 rounded-xl border transition-all cursor-pointer text-[10px] font-black uppercase tracking-widest group/toggle ${this.data.goal === g ? 'bg-blue-500/10 border-blue-500 text-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.2)]' : 'bg-white/5 border-white/5 text-zinc-500 hover:border-white/10'}">
-                                                    <span>${g}</span>
-                                                    <button onclick="event.stopPropagation(); window.onboarding.removeGoal(${idx})" 
-                                                            class="ml-2 opacity-50 hover:opacity-100 hover:scale-110 hover:text-red-500 transition-all">
-                                                        <i data-lucide="x" class="w-3 h-3"></i>
-                                                    </button>
-                                                </div>
-                                            `).join('')}
-                                        </div>
-                                        <div class="relative">
-                                            <input type="text" id="new-goal-input" placeholder="Ajouter un objectif..." 
-                                                   class="w-full bg-zinc-950 border border-white/10 rounded-xl px-4 py-3 pr-12 text-white placeholder-zinc-800 outline-none focus:ring-1 focus:ring-blue-500/50 transition-all text-xs"
-                                                   onkeypress="if(event.key === 'Enter') window.onboarding.addGoal()">
-                                            <button onclick="window.onboarding.addGoal()" class="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-blue-500 hover:text-blue-400">
-                                                <i data-lucide="plus" class="w-4 h-4"></i>
-                                            </button>
-                                        </div>
+                                <div class="bg-zinc-900/40 p-8 rounded-[2.5rem] border border-white/5 shadow-2xl">
+                                    <div class="space-y-5">
+                                        <label class="text-[10px] font-mono text-zinc-500 uppercase tracking-[0.3em] font-bold">Objectif Stratégique (1 à 3 max)</label>
+                                        ${errorMsg('goal')}
+
+                                        ${
+                                            !this.data.optionsLoaded
+                                            ? '<div class="flex gap-2"><div class="h-8 w-24 bg-white/5 rounded-xl animate-pulse"></div><div class="h-8 w-20 bg-white/5 rounded-xl animate-pulse"></div></div>'
+                                            : goalOptions.length === 0
+                                            ? '<p class="text-zinc-600 text-[10px] italic">Aucun objectif disponible en base de données.</p>'
+                                            : `<div class="flex flex-wrap gap-2">
+                                                ${goalOptions.map(g => {
+                                                    const isSelected = this.data.goal.includes(g.id);
+                                                    return `<button
+                                                        onclick="window.onboarding.toggleGoal('${g.id}')"
+                                                        class="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all duration-200 border
+                                                        ${ isSelected
+                                                            ? 'bg-blue-600 border-blue-500 text-white shadow-[0_0_12px_rgba(59,130,246,0.4)]'
+                                                            : 'bg-white/5 border-white/10 text-zinc-400 hover:border-blue-500/40 hover:text-white'
+                                                         }">
+                                                        ${g.name}
+                                                    </button>`;
+                                                }).join('')}
+                                            </div>`
+                                        }
                                     </div>
                                 </div>
+
                             </div>
                         </div>
                     </div>
                 `;
+            }
             case 6:
                 return `
                     <div class="flex flex-col items-center max-w-5xl mx-auto w-full animate-in fade-in slide-in-from-bottom-8 duration-1000">
@@ -714,8 +801,7 @@ export const onboarding = {
             nextBtn.onclick = async () => {
                 if (this.step === 2) {
                     this.data.firstName = document.getElementById('onb-firstname').value;
-                    this.data.brand = document.getElementById('onb-brand').value;
-                    this.data.description = document.getElementById('onb-description').value;
+                    this.data.lastName = document.getElementById('onb-lastname').value;
                 } else if (this.step === 4) {
                     const linkedInInput = document.getElementById('onb-linkedin');
                     if (linkedInInput) this.data.linkedinUrl = linkedInInput.value;
@@ -736,29 +822,6 @@ export const onboarding = {
         }
         
         if (prevBtn) prevBtn.onclick = () => this.prev();
-
-        document.querySelectorAll('.tone-tag').forEach(tag => {
-            tag.onclick = () => {
-                this.data.tone = tag.dataset.tone;
-                this.render();
-            };
-        });
-
-        document.querySelectorAll('[data-social-check]').forEach(check => {
-            check.onchange = (e) => {
-                const s = check.dataset.socialCheck;
-                if (e.target.checked) this.data.socials[s] = "";
-                else delete this.data.socials[s];
-                this.render();
-            };
-        });
-
-        document.querySelectorAll('.tone-tag').forEach(tag => {
-            tag.onclick = () => {
-                this.data.tone = tag.dataset.tone;
-                this.render();
-            };
-        });
 
         if (window.lucide) window.lucide.createIcons();
     }

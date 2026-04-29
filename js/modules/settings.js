@@ -7,34 +7,89 @@ export const settings = {
     hasChanges: false,
     showModal: false,
     initialData: null,
+    isLoaded: false,
 
     init() {
+        if (!onboarding.data.availableTones || onboarding.data.availableTones.length === 0) {
+            // Pre-fill with defaults if not loaded yet, but loadUserData will overwrite
+        }
+
         // Clone initial state to track changes
         this.initialData = JSON.parse(JSON.stringify({
             firstName: onboarding.data.firstName,
-            brand: onboarding.data.brand,
+            lastName: onboarding.data.lastName,
             description: onboarding.data.description,
             niche: [...onboarding.data.niche],
             linkedinUrl: onboarding.data.linkedinUrl,
-            tone: onboarding.data.tone,
-            goal: onboarding.data.goal,
-            availableTones: [...onboarding.availableTones],
-            availableGoals: [...onboarding.availableGoals]
+            tone: [...(onboarding.data.tone || [])],
+            goal: [...(onboarding.data.goal || [])],
+            availableTones: [...(onboarding.data.availableTones || [])],
+            availableGoals: [...(onboarding.data.availableGoals || [])]
         }));
         this.hasChanges = false;
+    },
+
+    async loadUserData() {
+        if (this.isLoaded) return;
+        
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) return;
+
+            const authId = session.user.id;
+
+            // Fetch User Profile + Master Options (Tones/Goals)
+            const [profileRes, tonesRes, goalsRes] = await Promise.all([
+                supabase.from('users').select('*').eq('id_auth_user', authId).single(),
+                supabase.from('tones').select('name').order('name'),
+                supabase.from('goals').select('name').order('name')
+            ]);
+
+            if (profileRes.data) {
+                const p = profileRes.data;
+                onboarding.data.firstName = p.full_name || p.first_name || '';
+                onboarding.data.lastName = p.company || p.last_name || '';
+                onboarding.data.description = p.description || '';
+                onboarding.data.linkedinUrl = p.linkedin_url || p.linkedin_link || '';
+                
+                // Topics
+                if (p.topic) {
+                    onboarding.data.niche = typeof p.topic === 'string' ? p.topic.split(',').map(s => s.trim()).filter(Boolean) : (Array.isArray(p.topic) ? p.topic : []);
+                }
+
+                // Tone (can be string or array in DB, we want array in state)
+                if (p.tone) {
+                    onboarding.data.tone = typeof p.tone === 'string' ? p.tone.split(',').map(s => s.trim()).filter(Boolean) : (Array.isArray(p.tone) ? p.tone : []);
+                }
+
+                // Goal
+                if (p.goal) {
+                    onboarding.data.goal = typeof p.goal === 'string' ? p.goal.split(',').map(s => s.trim()).filter(Boolean) : (Array.isArray(p.goal) ? p.goal : []);
+                }
+            }
+
+            if (tonesRes.data) onboarding.data.availableTones = tonesRes.data.map(t => t.name);
+            if (goalsRes.data) onboarding.data.availableGoals = goalsRes.data.map(g => g.name);
+
+            this.isLoaded = true;
+            this.init();
+            this.render();
+        } catch (e) {
+            console.error("Settings: Error loading user data", e);
+        }
     },
 
     checkChanges() {
         const currentData = {
             firstName: onboarding.data.firstName,
-            brand: onboarding.data.brand,
+            lastName: onboarding.data.lastName,
             description: onboarding.data.description,
             niche: onboarding.data.niche,
             linkedinUrl: onboarding.data.linkedinUrl,
             tone: onboarding.data.tone,
             goal: onboarding.data.goal,
-            availableTones: onboarding.availableTones,
-            availableGoals: onboarding.availableGoals
+            availableTones: onboarding.data.availableTones,
+            availableGoals: onboarding.data.availableGoals
         };
         
         // Deep compare
@@ -68,13 +123,13 @@ export const settings = {
             if (!session) throw new Error("No session");
 
             const updateData = {
-                full_name: onboarding.data.firstName,
-                company: onboarding.data.brand,
+                first_name: onboarding.data.firstName,
+                last_name: onboarding.data.lastName, // Brand is stored in last_name in this architecture
                 description: onboarding.data.description,
-                topic: onboarding.data.niche.join(', '), // Ensure string format for consistency
-                linkedin_url: onboarding.data.linkedinUrl,
-                tone: onboarding.data.tone,
-                goal: onboarding.data.goal
+                topic: onboarding.data.niche.join(', '),
+                linkedin_link: onboarding.data.linkedinUrl,
+                tone: Array.isArray(onboarding.data.tone) ? onboarding.data.tone.join(', ') : onboarding.data.tone,
+                goal: Array.isArray(onboarding.data.goal) ? onboarding.data.goal.join(', ') : onboarding.data.goal
             };
 
             const { error } = await supabase
@@ -121,17 +176,17 @@ export const settings = {
     addTone() {
         const input = document.getElementById('settings-tone-input');
         const val = input?.value?.trim();
-        if (val && !onboarding.availableTones.includes(val)) {
-            onboarding.availableTones.push(val);
+        if (val && !onboarding.data.availableTones.includes(val)) {
+            onboarding.data.availableTones.push(val);
             this.checkChanges();
             this.render();
         }
     },
 
     removeTone(idx) {
-        const tone = onboarding.availableTones[idx];
-        onboarding.availableTones.splice(idx, 1);
-        if (onboarding.data.tone === tone) onboarding.data.tone = null;
+        const tone = onboarding.data.availableTones[idx];
+        onboarding.data.availableTones.splice(idx, 1);
+        onboarding.data.tone = onboarding.data.tone.filter(t => t !== tone);
         this.checkChanges();
         this.render();
     },
@@ -139,17 +194,17 @@ export const settings = {
     addGoal() {
         const input = document.getElementById('settings-goal-input');
         const val = input?.value?.trim();
-        if (val && !onboarding.availableGoals.includes(val)) {
-            onboarding.availableGoals.push(val);
+        if (val && !onboarding.data.availableGoals.includes(val)) {
+            onboarding.data.availableGoals.push(val);
             this.checkChanges();
             this.render();
         }
     },
 
     removeGoal(idx) {
-        const goal = onboarding.availableGoals[idx];
-        onboarding.availableGoals.splice(idx, 1);
-        if (onboarding.data.goal === goal) onboarding.data.goal = null;
+        const goal = onboarding.data.availableGoals[idx];
+        onboarding.data.availableGoals.splice(idx, 1);
+        onboarding.data.goal = onboarding.data.goal.filter(g => g !== goal);
         this.checkChanges();
         this.render();
     },
@@ -157,6 +212,18 @@ export const settings = {
     render() {
         const content = document.getElementById('main-content');
         if (!content) return;
+        
+        if (!this.isLoaded) {
+            this.loadUserData();
+            content.innerHTML = `
+                <div class="flex flex-col items-center justify-center py-20 animate-pulse">
+                    <div class="w-12 h-12 border-4 border-blue-500/20 border-t-blue-500 rounded-full animate-spin mb-4"></div>
+                    <p class="text-zinc-500 font-bold uppercase tracking-widest text-[10px]">Chargement du profil...</p>
+                </div>
+            `;
+            return;
+        }
+
         if (!this.initialData) this.init();
 
         content.innerHTML = `
@@ -187,7 +254,7 @@ export const settings = {
                             </div>
                             <div class="space-y-2">
                                 <label class="text-[10px] font-mono text-zinc-500 uppercase tracking-widest font-bold">Marque / Compagnie</label>
-                                <input type="text" value="${onboarding.data.brand}" oninput="window.onboarding.data.brand = this.value; window.settings.checkChanges()" 
+                                <input type="text" value="${onboarding.data.lastName}" oninput="window.onboarding.data.lastName = this.value; window.settings.checkChanges()" 
                                        class="w-full bg-zinc-950 border border-white/5 rounded-2xl px-6 py-4 text-white placeholder-zinc-800 outline-none focus:ring-1 focus:ring-blue-500/30 transition-all font-medium text-sm">
                             </div>
                             <div class="space-y-2">
@@ -249,9 +316,9 @@ export const settings = {
                             <div class="space-y-6">
                                 <label class="text-[10px] font-mono text-zinc-500 uppercase tracking-widest font-bold">Modulation du Ton</label>
                                 <div class="flex flex-wrap gap-2">
-                                    ${onboarding.availableTones.map((t, idx) => `
-                                        <div onclick="window.onboarding.setTone('${t}'); window.settings.checkChanges(); window.settings.render()" 
-                                             class="relative flex items-center gap-2 px-4 py-2 rounded-xl border transition-all cursor-pointer text-[10px] font-black uppercase tracking-widest ${onboarding.data.tone === t ? 'bg-blue-500/10 border-blue-500 text-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.2)]' : 'bg-zinc-950 border-white/5 text-zinc-600 hover:border-white/10'}">
+                                    ${onboarding.data.availableTones.map((t, idx) => `
+                                        <div onclick="window.onboarding.toggleTone('${t}'); window.settings.checkChanges(); window.settings.render()" 
+                                             class="relative flex items-center gap-2 px-4 py-2 rounded-xl border transition-all cursor-pointer text-[10px] font-black uppercase tracking-widest ${onboarding.data.tone.includes(t) ? 'bg-blue-500/10 border-blue-500 text-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.2)]' : 'bg-zinc-950 border-white/5 text-zinc-600 hover:border-white/10'}">
                                             <span>${t}</span>
                                             <button onclick="event.stopPropagation(); window.settings.removeTone(${idx})" class="ml-2 opacity-50 hover:opacity-100 hover:text-red-500 transition-all">
                                                 <i data-lucide="x" class="w-3 h-3"></i>
@@ -273,9 +340,9 @@ export const settings = {
                             <div class="space-y-6">
                                 <label class="text-[10px] font-mono text-zinc-500 uppercase tracking-widest font-bold">Objectif Stratégique</label>
                                 <div class="flex flex-wrap gap-2">
-                                    ${onboarding.availableGoals.map((g, idx) => `
-                                        <div onclick="window.onboarding.setGoal('${g}'); window.settings.checkChanges(); window.settings.render()" 
-                                             class="relative flex items-center gap-2 px-4 py-2 rounded-xl border transition-all cursor-pointer text-[10px] font-black uppercase tracking-widest ${onboarding.data.goal === g ? 'bg-blue-500/10 border-blue-500 text-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.2)]' : 'bg-zinc-950 border-white/5 text-zinc-600 hover:border-white/10'}">
+                                    ${onboarding.data.availableGoals.map((g, idx) => `
+                                        <div onclick="window.onboarding.toggleGoal('${g}'); window.settings.checkChanges(); window.settings.render()" 
+                                             class="relative flex items-center gap-2 px-4 py-2 rounded-xl border transition-all cursor-pointer text-[10px] font-black uppercase tracking-widest ${onboarding.data.goal.includes(g) ? 'bg-blue-500/10 border-blue-500 text-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.2)]' : 'bg-zinc-950 border-white/5 text-zinc-600 hover:border-white/10'}">
                                             <span>${g}</span>
                                             <button onclick="event.stopPropagation(); window.settings.removeGoal(${idx})" class="ml-2 opacity-50 hover:opacity-100 hover:text-red-500 transition-all">
                                                 <i data-lucide="x" class="w-3 h-3"></i>
@@ -315,7 +382,7 @@ export const settings = {
                                 <i data-lucide="save" class="text-blue-500 w-8 h-8"></i>
                             </div>
                             <h3 class="text-2xl font-black text-white tracking-tighter uppercase">Enregistrer les modifications ?</h3>
-                            <p class="text-zinc-400 text-sm leading-relaxed">Vous êtes sur le point de quitter la configuration. Voulez-vous appliquer les nouveaux paramètres à votre profil Signal Flow avant de revenir au Studio ?</p>
+                            <p class="text-zinc-400 text-sm leading-relaxed">Vous êtes sur le point de quitter la configuration. Voulez-vous appliquer les nouveaux paramètres à votre profil Signal Flow avant de revenir à la Création ?</p>
                             
                             <div class="space-y-3 pt-6">
                                 <button onclick="window.settings.saveAndExit()" class="w-full py-4 bg-blue-600 hover:bg-blue-500 rounded-2xl text-white font-black uppercase tracking-widest text-[10px] transition-all shadow-lg shadow-blue-600/20">

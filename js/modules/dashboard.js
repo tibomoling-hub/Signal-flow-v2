@@ -10,8 +10,8 @@ export const dashboard = {
 
     tabs: {
         signal: { label: 'Signal', icon: 'radio' },
-        creation: { label: 'Studio', icon: 'zap' },
-        analytics: { label: 'Insight', icon: 'bar-chart-3' }
+        creation: { label: 'Création', icon: 'zap' },
+        analytics: { label: 'Analytic', icon: 'bar-chart-3' }
     },
 
     setTab(tabId) {
@@ -138,7 +138,7 @@ export const dashboard = {
                         <div class="w-20 h-20 bg-blue-600/10 border border-blue-500/20 rounded-[2rem] flex items-center justify-center shadow-2xl mb-8">
                             <i data-lucide="bar-chart-3" class="w-8 h-8 text-blue-500"></i>
                         </div>
-                        <h1 class="text-4xl font-black text-white mb-4 tracking-tighter uppercase">Insights</h1>
+                        <h1 class="text-4xl font-black text-white mb-4 tracking-tighter uppercase">Analytic</h1>
                         <p class="text-secondary max-w-sm mx-auto mb-10 text-base leading-relaxed">
                             Nous calibrons les moteurs d'analyse. Vos métriques de performance seront disponibles prochainement.
                         </p>

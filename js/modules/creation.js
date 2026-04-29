@@ -14,6 +14,9 @@ export const creation = {
     isRegenerating: false,
     initialTone: "Expert",
     initialGoal: "Engagement",
+    availableTones: [],
+    availableGoals: [],
+    optionsLoaded: false,
     tone: "Expert",
     goal: "Engagement",
     content: {
@@ -56,24 +59,75 @@ export const creation = {
         this.renderPreview();
     },
 
+    async loadOptions() {
+        if (this.optionsLoaded) return;
+        
+        try {
+            const [{ data: tones }, { data: goals }] = await Promise.all([
+                supabase.from('tones').select('name').order('name'),
+                supabase.from('goals').select('name').order('name')
+            ]);
+            
+            if (tones) this.availableTones = tones.map(t => t.name);
+            if (goals) this.availableGoals = goals.map(g => g.name);
+            
+            this.optionsLoaded = true;
+            this.render();
+        } catch (e) {
+            console.error("Studio: Erreur chargement options", e);
+        }
+    },
+
     loadGeneratedContent(data) {
-        // Gestion flexible : Make peut renvoyer un objet ou un tableau [Bundle]
+        // Make peut renvoyer un tableau [Bundle] ou un objet direct
         const payload = Array.isArray(data) ? data[0] : data;
 
-        console.log("🛠️ [Signal Flow] Réception contenu Make:", payload);
+        console.log("🛠️ [Signal Flow] Réception payload Make:", payload);
 
-        // 1. Cas : Contenu direct (nouveau format)
-        if (payload && payload.content) {
-            this.content.post.body = payload.content;
-            this.currentPostId = payload.id_post || null; // Optionnel
+        // 1. Cas prioritaire : Make renvoie directement body_content + tone_post + goal_post
+        if (payload && (payload.body_content || payload.content_body)) {
+            console.log("✅ [Signal Flow] Format direct détecté — chargement du contenu...");
+            
+            this.content.post = {
+                hook: "",
+                body: payload.body_content || payload.content_body,
+                cta: "",
+                hashtags: payload.hashtag || ""
+            };
+            
+            /* 
+            // Désactivé pour l'instant
+            if (payload.tone_post) {
+                this.tone = payload.tone_post;
+                this.initialTone = this.tone;
+            }
+            
+            if (payload.goal_post) {
+                this.goal = payload.goal_post;
+                this.initialGoal = this.goal;
+            }
+            */
+            
+            this.currentPostId = payload.id_post || null;
+            this.format = 'post';
             this.setAiLoading(false);
             this.render();
             return;
         }
 
-        // 2. Cas : ID de post (ancien format / fallback)
+        // 2. Cas : Make renvoie un id_post → on fetch en base
         if (payload && payload.id_post) {
+            console.log("📡 [Signal Flow] ID reçu — récupération en base...", payload.id_post);
             this.fetchPostById(payload.id_post);
+            return;
+        }
+
+        // 3. Cas legacy : champ 'content' direct
+        if (payload && payload.content) {
+            this.content.post.body = payload.content;
+            this.currentPostId = payload.id_post || null;
+            this.setAiLoading(false);
+            this.render();
             return;
         }
 
@@ -84,38 +138,70 @@ export const creation = {
 
     async fetchPostById(postId) {
         this.setAiLoading(true);
-        console.log("DEBUG: Tentative de chargement du post:", postId);
-        try {
-            const { data, error } = await supabase
-                .from('posts')
-                .select('*')
-                .eq('id_post', postId)
-                .maybeSingle();
+        console.log("🛠️ [Signal Flow] Récupération du post:", postId);
+        
+        let attempts = 0;
+        const maxAttempts = 5;
+        const delay = 2000;
 
-            console.log("DEBUG: Réponse Supabase:", { data, error });
+        while (attempts < maxAttempts) {
+            await new Promise(resolve => setTimeout(resolve, attempts === 0 ? 2000 : delay));
+            attempts++;
+            console.log(`📡 [Signal Flow] Tentative ${attempts}/${maxAttempts}...`);
 
-            if (error) throw new Error("Erreur Supabase: " + error.message);
-            if (!data) throw new Error("Post non trouvé pour l'ID: " + postId);
+            try {
+                const { data, error } = await supabase
+                    .from('posts')
+                    .select('id_post, title, body_content, content_body, tone_post, goal_post, tone, goal, hashtag')
+                    .eq('id_post', postId)
+                    .maybeSingle();
 
-            this.currentPostId = data.id_post;
-            this.currentPostTitle = data.title;
-            this.content.post = {
-                hook: "",
-                body: data.content_body || "",
-                cta: "",
-                hashtags: data.hashtag || ""
-            };
-            this.format = 'post';
-            this.initialTone = this.tone;
-            this.initialGoal = this.goal;
-        } catch (e) {
-            console.error("SCHtroumf : Erreur lors de la récupération du post", e);
-            this.currentPostId = null;
-            this.currentPostTitle = null;
-            this.clearContent();
-        } finally {
-            this.setAiLoading(false);
+                if (error) {
+                    console.error("❌ [Signal Flow] Erreur Supabase:", error.message, error.code);
+                    continue;
+                }
+
+                if (data) {
+                    console.log("✅ [Signal Flow] Post trouvé !", data);
+                    this.currentPostId = data.id_post;
+                    this.currentPostTitle = data.title || null;
+                    
+                    // Priorité à body_content comme demandé par l'utilisateur
+                    const body = data.body_content || data.content_body || "";
+                    
+                    this.content.post = {
+                        hook: "",
+                        body: body,
+                        cta: "",
+                        hashtags: data.hashtag || ""
+                    };
+                    
+                    /*
+                    // Mise à jour du ton et de l'objectif (Désactivé)
+                    this.tone = data.tone_post || data.tone || this.tone;
+                    this.goal = data.goal_post || data.goal || this.goal;
+                    
+                    this.initialTone = this.tone;
+                    this.initialGoal = this.goal;
+                    */
+                    this.format = 'post';
+                    this.setAiLoading(false);
+                    this.render();
+                    return;
+                }
+
+                console.warn(`⚠️ [Signal Flow] Post non visible à la tentative ${attempts}.`);
+
+            } catch (e) {
+                console.error(`❌ [Signal Flow] Exception tentative ${attempts}:`, e.message);
+            }
         }
+
+        console.error("🚫 [Signal Flow] Post introuvable après 5 tentatives.");
+        this.showToast("Le post généré n'est pas encore visible. Vérifiez les RLS Supabase.", "error");
+        this.currentPostId = null;
+        this.clearContent();
+        this.setAiLoading(false);
     },
 
     clearContent() {
@@ -124,6 +210,10 @@ export const creation = {
     },
 
     render() {
+        if (!this.optionsLoaded) {
+            this.loadOptions();
+        }
+        
         const container = document.getElementById('dashboard-content');
         if (!container) return;
 
@@ -186,7 +276,7 @@ export const creation = {
                 <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
                     <header class="view-transition space-y-2">
                         <p class="text-detail">Atelier de Contenu</p>
-                        <h1 class="text-5xl font-black text-white tracking-tighter">Studio</h1>
+                        <h1 class="text-5xl font-black text-white tracking-tighter">Création</h1>
                     </header>
                     ${postMeta}
                 </div>
@@ -202,18 +292,20 @@ export const creation = {
                     <div class="w-full md:w-1/3 flex items-center gap-4 bg-anthracite-950/50 px-4 py-1.5 rounded-2xl border border-white/5">
                         <span class="text-detail !text-[9px] whitespace-nowrap">Ton</span>
                         <select class="w-full bg-transparent text-sm text-zinc-300 font-bold outline-none py-2 cursor-pointer" onchange="window.creation.tone = this.value">
-                            <option value="Expert" ${this.tone === 'Expert' ? 'selected' : ''}>Expert</option>
-                            <option value="Bold" ${this.tone === 'Bold' ? 'selected' : ''}>Bold / Direct</option>
-                            <option value="\u00c9ducatif" ${this.tone === '\u00c9ducatif' ? 'selected' : ''}>\u00c9ducatif</option>
+                            ${this.availableTones.length > 0 
+                                ? this.availableTones.map(t => `<option value="${t}" ${this.tone === t ? 'selected' : ''}>${t}</option>`).join('')
+                                : `<option value="${this.tone}">${this.tone}</option>`
+                            }
                         </select>
                     </div>
                     <!-- Goal Selection -->
                     <div class="w-full md:w-1/4 flex items-center gap-4 bg-anthracite-950/50 px-4 py-1.5 rounded-2xl border border-white/5">
                         <span class="text-detail !text-[9px] whitespace-nowrap">Objectif</span>
                         <select class="w-full bg-transparent text-sm text-zinc-300 font-bold outline-none py-2 cursor-pointer" onchange="window.creation.updateSettings('goal', this.value)">
-                            <option value="Engagement" ${this.goal === 'Engagement' ? 'selected' : ''}>Engagement</option>
-                            <option value="Autorit\u00e9" ${this.goal === 'Autorit\u00e9' ? 'selected' : ''}>Autorit\u00e9</option>
-                            <option value="Leads" ${this.goal === 'Leads' ? 'selected' : ''}>G\u00e9n\u00e9ration de leads</option>
+                            ${this.availableGoals.length > 0 
+                                ? this.availableGoals.map(g => `<option value="${g}" ${this.goal === g ? 'selected' : ''}>${g}</option>`).join('')
+                                : `<option value="${this.goal}">${this.goal}</option>`
+                            }
                         </select>
                     </div>
                     <!-- Regenerate Button -->
@@ -548,7 +640,7 @@ export const creation = {
                                 <p class="text-lg font-light opacity-80 leading-relaxed">${this.content.carousel[0].content}</p>
                             </div>
                             <div class="flex justify-between items-end">
-                                <div class="text-[10px] font-black uppercase tracking-widest opacity-60">Signal Flow Studio</div>
+                                <div class="text-[10px] font-black uppercase tracking-widest opacity-60">Signal Flow Création</div>
                                 <div class="text-[10px] bg-white/10 px-3 py-1.5 rounded-full font-bold">1 / ${this.content.carousel.length}</div>
                             </div>
                         </div>

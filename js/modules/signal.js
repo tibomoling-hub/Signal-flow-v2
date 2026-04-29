@@ -55,16 +55,17 @@ export const signal = {
     async handlePublish(trendId) {
         if (this.loadingTrends[trendId]) return;
 
-        // On bascule immédiatement sur le Studio en mode loading
+        // 1. Basculer vers la Création avec le skeleton de chargement
         window.dashboard.setTab('creation');
-        window.creation.setAiLoading(true);
+        window.creation.isAiLoading = true;
+        window.creation.render();
 
         try {
-            // 1. Récupération de la session
+            // 2. Session utilisateur
             const { data: { session } } = await supabase.auth.getSession();
             if (!session) throw new Error('Session non trouvée');
 
-            // 2. Récupération des infos utilisateur (id_user, tone, goal)
+            // 3. Profil utilisateur
             const { data: profile, error: profileError } = await supabase
                 .from('users')
                 .select('id_user, tone, goal')
@@ -73,11 +74,12 @@ export const signal = {
 
             if (profileError) throw profileError;
 
-            // 3. Appel au Webhook Make avec le payload complet
+            // 4. Appel au Webhook Make
+            console.log('📡 [Signal Flow] Appel webhook Make, trend:', trendId);
             const response = await fetch('https://hook.eu1.make.com/4o6kwqi31dmho63dfpycc7gonqhn3wgp', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
+                body: JSON.stringify({
                     id_trend: trendId,
                     id_user: profile.id_user,
                     tone: profile.tone || 'Expert',
@@ -85,19 +87,43 @@ export const signal = {
                 })
             });
 
-            if (!response.ok) throw new Error('Erreur lors de la g\u00e9n\u00e9ration');
+            if (!response.ok) throw new Error('Erreur HTTP: ' + response.status);
 
-            const data = await response.json();
-            console.log("DEBUG: Retour Webhook Make:", data);
-            
-            // D\u00e9sactivation du loading et injection du contenu
-            creation.setAiLoading(false);
-            creation.loadGeneratedContent(data);
-            
+            // 5. Lecture et parsing de la réponse
+            const rawText = await response.text();
+            console.log('📨 [Signal Flow] Réponse Make brute:', rawText);
+
+            let payload = {};
+            try {
+                payload = JSON.parse(rawText);
+            } catch(e) {
+                // Si ce n'est pas du JSON, on traite le texte brut comme contenu
+                payload = { content_body: rawText };
+            }
+
+            console.log('✅ [Signal Flow] Payload Make:', payload);
+
+            // 6. Extraction de content_body (le champ envoyé par Make)
+            const bodyText = payload.content_body || payload.body_content || '';
+
+            if (!bodyText) {
+                console.warn('⚠️ [Signal Flow] content_body vide dans la réponse Make');
+                throw new Error('Contenu vide reçu de Make');
+            }
+
+            // 7. Injection directe dans la Création
+            window.creation.content.post.body = bodyText;
+            window.creation.currentPostId = payload.id_post || null;
+            window.creation.format = 'post';
+            window.creation.isAiLoading = false;
+            window.creation.render();
+
+            console.log('🎉 [Signal Flow] Contenu injecté dans la Création avec succès !');
+
         } catch (e) {
-            console.error('SCHtroumf : Échec critique de l\'orchestration Make', e);
-            window.creation.setAiLoading(false);
-            window.creation.clearContent();
+            console.error('❌ [Signal Flow] Échec:', e.message);
+            window.creation.isAiLoading = false;
+            window.creation.render();
         }
     },
 
@@ -214,20 +240,13 @@ export const signal = {
         html += '    <span class="text-[10px] font-bold text-zinc-600 uppercase tracking-widest">' + dateStr + '</span>';
         html += '  </div>';
 
-        // 4. Feedback Actions (Aligned Right)
-        html += '  <div class="ml-auto flex items-center gap-3">';
-        html += '    <button class="p-2 rounded-lg text-zinc-500 hover:text-blue-400 hover:bg-blue-500/10 transition-all duration-300" title="Pertinent">';
-        html += '      <i data-lucide="thumbs-up" class="w-3.5 h-3.5"></i>';
-        html += '    </button>';
-        html += '    <button class="p-2 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-all duration-300" title="Non pertinent">';
-        html += '      <i data-lucide="thumbs-down" class="w-3.5 h-3.5"></i>';
-        html += '    </button>';
-        html += '  </div>';
+        // 4. Feedback Actions removed
+        html += '  <div class="ml-auto flex items-center gap-3"></div>';
         
         html += '</div>';
 
         // --- Title & Summary ---
-        html += '<div class="space-y-4">';
+        html += '<div class="space-y-4 cursor-pointer" onclick="window.signal.handlePublish(\'' + trend.id_trend + '\')">';
         html += '  <h2 class="text-3xl font-black text-white tracking-tight leading-tight group-hover:text-blue-400 transition-colors">' + trend.title + '</h2>';
         html += '  <p class="text-secondary text-base leading-relaxed line-clamp-3 font-light opacity-80">' + trend.summary + '</p>';
         html += '</div>';

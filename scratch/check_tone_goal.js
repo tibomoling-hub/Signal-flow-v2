@@ -4,17 +4,18 @@ dotenv.config();
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
-async function check() {
+async function checkData() {
     const { data, error } = await supabase
         .from('users')
-        .select('*')
-        .limit(1);
+        .select('tone, goal')
+        .limit(5);
     
     if (error) {
-        console.error("Error:", error);
+        console.error(error);
     } else {
-        console.log("Columns in 'users' table:", Object.keys(data[0] || {}));
+        console.log("Current Data in 'users' table:");
+        console.table(data);
     }
 }
 
-check();
+checkData();
