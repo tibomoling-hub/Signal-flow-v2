@@ -12,13 +12,14 @@ export const creation = {
     isModalOpen: false,
     isPreviewExpanded: false,
     isRegenerating: false,
+    isModified: false,
     initialTone: "Expert",
     initialGoal: "Engagement",
     availableTones: [],
     availableGoals: [],
     optionsLoaded: false,
-    tone: "Expert",
-    goal: "Engagement",
+    tone: null,
+    goal: null,
     content: {
         post: {
             hook: "🚀 L'IA ne remplacera pas les créateurs, mais ceux qui l'utilisent le feront.",
@@ -37,12 +38,16 @@ export const creation = {
     },
 
     setFormat(f) {
-        this.format = f;
-        this.render();
+        if (this.format !== f) {
+            this.format = f;
+            this.isModified = true;
+            this.render();
+        }
     },
 
     updatePost(field, value) {
         this.content.post[field] = value;
+        this.isModified = true;
         this.renderPreview();
     },
 
@@ -56,6 +61,7 @@ export const creation = {
 
     updateCarousel(index, field, value) {
         this.content.carousel[index][field] = value;
+        this.isModified = true;
         this.renderPreview();
     },
 
@@ -63,26 +69,66 @@ export const creation = {
         if (this.optionsLoaded) return;
         
         try {
-            const [{ data: tones }, { data: goals }] = await Promise.all([
-                supabase.from('tones').select('name').order('name'),
-                supabase.from('goals').select('name').order('name')
+            // 1. Obtenir la session et l'id_user
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) return;
+
+            const { data: profile } = await supabase
+                .from('users')
+                .select('id_user')
+                .eq('id_auth_user', session.user.id)
+                .single();
+
+            if (!profile) return;
+
+            // 2. Charger uniquement les tons et objectifs du user (via tables de liaison)
+            const [tonesRes, goalsRes] = await Promise.all([
+                supabase
+                    .from('user_tones')
+                    .select('tones(id_tone, name)')
+                    .eq('id_user', profile.id_user),
+                supabase
+                    .from('user_goals')
+                    .select('goals(id_goal, name)')
+                    .eq('id_user', profile.id_user)
             ]);
             
-            if (tones) this.availableTones = tones.map(t => t.name);
-            if (goals) this.availableGoals = goals.map(g => g.name);
+            if (tonesRes.data) {
+                // On aplatit le résultat de la jointure
+                this.availableTones = tonesRes.data.map(t => t.tones).filter(Boolean);
+                if (!this.tone && this.availableTones.length > 0) {
+                    this.tone = this.availableTones[0].id_tone;
+                }
+            }
+
+            if (goalsRes.data) {
+                // On aplatit le résultat de la jointure
+                this.availableGoals = goalsRes.data.map(g => g.goals).filter(Boolean);
+                if (!this.goal && this.availableGoals.length > 0) {
+                    this.goal = this.availableGoals[0].id_goal;
+                }
+            }
             
+            console.log("🎯 [Studio] Options personnalisées chargées :", {
+                tones: this.availableTones.length,
+                goals: this.availableGoals.length
+            });
+
             this.optionsLoaded = true;
             this.render();
         } catch (e) {
-            console.error("Studio: Erreur chargement options", e);
+            console.error("Studio: Erreur chargement options personnalisées", e);
         }
     },
 
     loadGeneratedContent(data) {
+        // On s'assure de garder le skeleton loader actif au début du traitement
+        this.isAiLoading = true;
+        
         // Make peut renvoyer un tableau [Bundle] ou un objet direct
         const payload = Array.isArray(data) ? data[0] : data;
 
-        console.log("🛠️ [Signal Flow] Réception payload Make:", payload);
+        console.log("🛠️ [Signal Flow] Réception payload:", payload);
 
         // 1. Cas prioritaire : Make renvoie directement body_content + tone_post + goal_post
         if (payload && (payload.body_content || payload.content_body)) {
@@ -95,21 +141,15 @@ export const creation = {
                 hashtags: payload.hashtag || ""
             };
             
-            /* 
-            // Désactivé pour l'instant
-            if (payload.tone_post) {
-                this.tone = payload.tone_post;
-                this.initialTone = this.tone;
-            }
-            
-            if (payload.goal_post) {
-                this.goal = payload.goal_post;
-                this.initialGoal = this.goal;
-            }
-            */
+             if (payload.id_user_tone || payload.id_tone) this.tone = payload.id_user_tone || payload.id_tone;
+             if (payload.id_user_goal || payload.id_goal) this.goal = payload.id_user_goal || payload.id_goal;
+             
+             this.initialTone = this.tone;
+             this.initialGoal = this.goal;
             
             this.currentPostId = payload.id_post || null;
             this.format = 'post';
+            this.isModified = false;
             this.setAiLoading(false);
             this.render();
             return;
@@ -152,7 +192,7 @@ export const creation = {
             try {
                 const { data, error } = await supabase
                     .from('posts')
-                    .select('id_post, title, body_content, content_body, tone_post, goal_post, tone, goal, hashtag')
+                    .select('id_post, title, body_content, content_body, id_tone, id_goal, tone_post, goal_post, tone, goal, hashtag')
                     .eq('id_post', postId)
                     .maybeSingle();
 
@@ -176,15 +216,14 @@ export const creation = {
                         hashtags: data.hashtag || ""
                     };
                     
-                    /*
-                    // Mise à jour du ton et de l'objectif (Désactivé)
-                    this.tone = data.tone_post || data.tone || this.tone;
-                    this.goal = data.goal_post || data.goal || this.goal;
+                    // Mise à jour du ton et de l'objectif
+                    this.tone = data.id_tone || data.tone_post || data.tone || this.tone;
+                    this.goal = data.id_goal || data.goal_post || data.goal || this.goal;
                     
                     this.initialTone = this.tone;
                     this.initialGoal = this.goal;
-                    */
                     this.format = 'post';
+                    this.isModified = false;
                     this.setAiLoading(false);
                     this.render();
                     return;
@@ -212,6 +251,7 @@ export const creation = {
     render() {
         if (!this.optionsLoaded) {
             this.loadOptions();
+            return; // On attend que les options soient là pour le premier render complet
         }
         
         const container = document.getElementById('dashboard-content');
@@ -249,26 +289,10 @@ export const creation = {
             </div>
         ` : '';
 
-        const regenOverlay = this.isRegenerating ? `
-            <div class="fixed inset-0 z-[300] flex items-center justify-center p-6 bg-anthracite-950/40 backdrop-blur-[4px] animate-in fade-in duration-300">
-                <div class="bg-white px-12 py-10 rounded-[2.5rem] shadow-[0_40px_80px_-15px_rgba(0,0,0,0.3)] border border-zinc-100 flex flex-col items-center gap-8 animate-in zoom-in-95 duration-500">
-                    <div class="relative">
-                        <div class="w-16 h-16 border-4 border-blue-600/10 rounded-full"></div>
-                        <div class="absolute inset-0 w-16 h-16 border-4 border-transparent border-t-blue-600 rounded-full animate-spin"></div>
-                    </div>
-                    <div class="flex flex-col items-center gap-2">
-                        <p class="text-2xl font-black text-zinc-900 tracking-tighter animate-pulse text-center">Création de votre post personnalisé</p>
-                        <p class="text-sm text-zinc-500 font-medium tracking-tight">Signal Flow IA génère la meilleure version...</p>
-                    </div>
-                </div>
-            </div>
-        ` : '';
-
         const hasChanged = this.tone !== this.initialTone || this.goal !== this.initialGoal;
 
         container.innerHTML = `
             ${modalHtml}
-            ${regenOverlay}
             <div id="toast-container" class="fixed top-8 right-8 z-[200] flex flex-col gap-3 pointer-events-none"></div>
             
             <div class="container mx-auto px-4 py-8 space-y-10 animate-in fade-in duration-700">
@@ -291,9 +315,9 @@ export const creation = {
                     <!-- Tone Selection -->
                     <div class="w-full md:w-1/3 flex items-center gap-4 bg-anthracite-950/50 px-4 py-1.5 rounded-2xl border border-white/5">
                         <span class="text-detail !text-[9px] whitespace-nowrap">Ton</span>
-                        <select class="w-full bg-transparent text-sm text-zinc-300 font-bold outline-none py-2 cursor-pointer" onchange="window.creation.tone = this.value">
+                        <select class="w-full bg-transparent text-sm text-zinc-300 font-bold outline-none py-2 cursor-pointer" onchange="window.creation.updateSettings('tone', this.value)">
                             ${this.availableTones.length > 0 
-                                ? this.availableTones.map(t => `<option value="${t}" ${this.tone === t ? 'selected' : ''}>${t}</option>`).join('')
+                                ? this.availableTones.map(t => `<option value="${t.id_tone}" ${this.tone === t.id_tone ? 'selected' : ''}>${t.name}</option>`).join('')
                                 : `<option value="${this.tone}">${this.tone}</option>`
                             }
                         </select>
@@ -303,20 +327,21 @@ export const creation = {
                         <span class="text-detail !text-[9px] whitespace-nowrap">Objectif</span>
                         <select class="w-full bg-transparent text-sm text-zinc-300 font-bold outline-none py-2 cursor-pointer" onchange="window.creation.updateSettings('goal', this.value)">
                             ${this.availableGoals.length > 0 
-                                ? this.availableGoals.map(g => `<option value="${g}" ${this.goal === g ? 'selected' : ''}>${g}</option>`).join('')
+                                ? this.availableGoals.map(g => `<option value="${g.id_goal}" ${this.goal === g.id_goal ? 'selected' : ''}>${g.name}</option>`).join('')
                                 : `<option value="${this.goal}">${this.goal}</option>`
                             }
                         </select>
                     </div>
                     <!-- Regenerate Button -->
                     <button 
-                        onclick="${!this.isRegenerating ? 'window.creation.handleRegenerate()' : ''}"
-                        ${this.isRegenerating ? 'disabled' : ''}
+                        id="regen-btn"
+                        onclick="${(this.isModified && !this.isAiLoading) ? 'window.creation.handleRegenerate()' : ''}"
+                        ${(!this.isModified || this.isAiLoading) ? 'disabled' : ''}
                         class="w-full md:w-auto px-8 py-3.5 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-3 transition-all duration-300 shadow-sm
-                        ${this.isRegenerating ? 'bg-blue-600/50 cursor-wait text-white/50' : 'bg-blue-600 text-white cursor-pointer hover:bg-blue-700 shadow-md hover:-translate-y-0.5 active:translate-y-0'}"
+                        ${(!this.isModified || this.isAiLoading) ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed border border-white/5' : 'bg-blue-600 text-white cursor-pointer hover:bg-blue-700 shadow-md hover:-translate-y-0.5 active:translate-y-0'}"
                     >
-                        <i data-lucide="refresh-cw" class="w-4 h-4 ${this.isRegenerating ? 'animate-spin' : (hasChanged ? 'animate-in spin-in duration-500' : '')}"></i>
-                        ${this.isRegenerating ? 'G\u00e9n\u00e9ration...' : 'Reg\u00e9n\u00e9rer'}
+                        <i data-lucide="refresh-cw" class="w-4 h-4 ${this.isAiLoading ? 'animate-spin' : ''}"></i>
+                        ${this.isAiLoading ? 'G\u00e9n\u00e9ration...' : 'Reg\u00e9n\u00e9rer'}
                     </button>
                 </div>
 
@@ -356,9 +381,11 @@ export const creation = {
                         <!-- Footer Actions (Right aligned) -->
                         <div class="mt-6 flex justify-end items-center gap-4 px-2">
                             <button 
-                                onclick="window.creation.handleSave()"
-                                ${this.isSaving || this.isRegenerating ? 'disabled' : ''}
-                                class="px-6 py-2 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 active:scale-95 transition-all flex items-center gap-2 shadow-sm ${this.isRegenerating ? 'opacity-50 cursor-not-allowed' : ''}"
+                                id="save-btn"
+                                onclick="${this.isModified ? 'window.creation.handleSave()' : ''}"
+                                ${!this.isModified || this.isSaving || this.isAiLoading ? 'disabled' : ''}
+                                class="px-6 py-2 rounded-lg font-medium transition-all flex items-center gap-2 shadow-sm 
+                                ${!this.isModified || this.isSaving || this.isAiLoading ? 'bg-zinc-800 text-zinc-600 cursor-not-allowed border border-white/5' : 'bg-blue-600 text-white hover:bg-blue-700 active:scale-95'}"
                             >
                                 ${this.isSaving ? '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> Enregistrement...' : 'Enregistrer'}
                             </button>
@@ -670,7 +697,7 @@ export const creation = {
         const text = tempDiv.innerText;
         
         navigator.clipboard.writeText(text).then(() => {
-            this.showToast("Contenu copi\u00e9 !");
+            this.showToast("Contenu copié !");
         });
     },
 
@@ -712,27 +739,47 @@ export const creation = {
         if (this.isSaving) return;
 
         if (!this.currentPostId) {
-            this.showToast("Le post n'a pas pu être enregistré", 'error');
+            console.error("🚫 [Signal Flow] Erreur: Pas d'id_post trouvé.");
+            this.showToast("Impossible d'enregistrer : post non identifié.", 'error');
             return;
         }
 
         this.isSaving = true;
-        this.render();
+        this.renderButtons(); // Mise à jour de l'état visuel du bouton
 
         try {
-            console.log(">>> Sauvegarde via RPC pour ID:", this.currentPostId);
+            console.log("💾 [Signal Flow] Tentative de sauvegarde :");
+            console.log("   - ID Post:", this.currentPostId);
+            console.log("   - Ton (ID):", this.tone);
+            console.log("   - Objectif (ID):", this.goal);
+            console.log("   - Taille contenu:", (this.content.post.body || "").length);
             
-            const { error } = await supabase.rpc('update_post_content', {
-                p_id_post: this.currentPostId,
-                p_body: this.content.post.body
-            });
+            const { data, error } = await supabase
+                .from('posts')
+                .update({
+                    content_body: this.content.post.body,
+                    id_tone: [this.tone],
+                    id_goal: [this.goal]
+                })
+                .eq('id_post', this.currentPostId)
+                .select(); 
 
-            if (error) throw error;
+            if (error) {
+                console.error("❌ [Signal Flow] Erreur API Supabase:", error);
+                throw error;
+            }
             
-            this.showToast("Le contenu a bien été enregistré", 'success');
+            if (!data || data.length === 0) {
+                throw new Error("Aucune ligne n'a été mise à jour.");
+            }
+
+            console.log("✅ [Signal Flow] Données vérifiées en base:", data[0]);
+            
+            this.isModified = false;
+            this.showToast("Le contenu a bien été enregistré et vérifié", 'success');
         } catch (err) {
-            console.error(">>> Erreur RPC:", err);
-            this.showToast("Le post n'a pas pu être enregistré", 'error');
+            console.error("❌ [Signal Flow] Erreur sauvegarde:", err.message);
+            this.showToast("Erreur lors de l'enregistrement : " + err.message, 'error');
         } finally {
             this.isSaving = false;
             this.render();
@@ -745,8 +792,29 @@ export const creation = {
     },
 
     handleEditorInput(el) {
-        this.content.post.body = el.innerHTML; // On stocke l'HTML pour pr\u00e9server gras/italique
-        this.renderPreview();
+        if (this.content.post.body !== el.innerHTML) {
+            this.content.post.body = el.innerHTML;
+            this.isModified = true;
+            this.renderPreview();
+            this.renderButtons(); 
+        }
+    },
+
+    renderButtons() {
+        const regenBtn = document.getElementById('regen-btn');
+        const saveBtn = document.getElementById('save-btn');
+        
+        if (regenBtn) {
+            regenBtn.disabled = !this.isModified || this.isAiLoading;
+            regenBtn.className = `w-full md:w-auto px-8 py-3.5 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center justify-center gap-3 transition-all duration-300 shadow-sm ${(!this.isModified || this.isAiLoading) ? 'bg-zinc-800 text-zinc-500 cursor-not-allowed border border-white/5' : 'bg-blue-600 text-white cursor-pointer hover:bg-blue-700 shadow-md hover:-translate-y-0.5 active:translate-y-0'}`;
+            regenBtn.onclick = (this.isModified && !this.isAiLoading) ? () => this.handleRegenerate() : null;
+        }
+        
+        if (saveBtn) {
+            saveBtn.disabled = !this.isModified || this.isSaving || this.isAiLoading;
+            saveBtn.className = `px-6 py-2 rounded-lg font-medium transition-all flex items-center gap-2 shadow-sm ${(!this.isModified || this.isSaving || this.isAiLoading) ? 'bg-zinc-800 text-zinc-600 cursor-not-allowed border border-white/5' : 'bg-blue-600 text-white hover:bg-blue-700 active:scale-95'}`;
+            saveBtn.onclick = this.isModified ? () => this.handleSave() : null;
+        }
     },
 
     toggleEmojiPicker(e) {
@@ -764,33 +832,67 @@ export const creation = {
     },
 
     updateSettings(key, value) {
-        this[key] = value;
-        this.render();
+        if (this[key] !== value) {
+            this[key] = value;
+            this.isModified = true;
+            this.render();
+        }
     },
 
     async handleRegenerate() {
-        if (this.isRegenerating) return;
+        if (this.isAiLoading) return;
         
-        this.isRegenerating = true;
+        // On capture le contenu AVANT de passer en chargement car setAiLoading(true) vide le contenu
+        const contentToSend = this.content.post.body;
+        
+        this.setAiLoading(true);
         this.render();
 
         try {
-            console.log(">>> Appel Edge Function 'regenerate-content'");
+            // 1. Session utilisateur
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) throw new Error('Session non trouvée');
 
-            const { data, error } = await supabase.functions.invoke('regenerate-content', {
-                body: {
-                    content_body: this.content.post.body,
-                    tone: this.tone,
-                    goal: this.goal
-                }
+            // 2. Profil utilisateur pour id_user
+            const { data: profile, error: profileError } = await supabase
+                .from('users')
+                .select('id_user')
+                .eq('id_auth_user', session.user.id)
+                .single();
+
+            if (profileError) throw profileError;
+
+            // 3. Appel au Webhook n8n
+            console.log('📡 [Signal Flow] Appel webhook modification-post');
+            const response = await fetch('https://oreegami.app.n8n.cloud/webhook-test/modification-post', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    id_post: this.currentPostId,
+                    id_user: profile.id_user,
+                    id_user_goal: this.goal,
+                    id_user_tone: this.tone,
+                    body_content: contentToSend
+                })
             });
 
-            if (error) throw error;
+            if (!response.ok) throw new Error('Erreur HTTP: ' + response.status);
 
-            const newContent = data.result;
+            const rawText = await response.text();
+            console.log('📨 [Signal Flow] Réponse brute:', rawText);
+
+            let payload = {};
+            try {
+                payload = JSON.parse(rawText);
+            } catch(e) {
+                payload = { content_body: rawText };
+            }
+
+            const newContent = payload.content_body || payload.body_content || (typeof payload === 'string' ? payload : '');
 
             if (newContent && newContent.trim().length > 0) {
                 this.content.post.body = newContent;
+                this.isModified = false;
                 this.initialTone = this.tone;
                 this.initialGoal = this.goal;
                 this.showToast("Le contenu a bien été régénéré", 'success');
@@ -798,10 +900,10 @@ export const creation = {
                 throw new Error("Réponse vide de l'IA");
             }
         } catch (error) {
-            console.error(">>> Erreur de régénération via Edge Function:", error);
-            this.showToast("Erreur lors de la régénération, veuillez réessayer", "error");
+            console.error(">>> Erreur régénération:", error);
+            this.showToast("Erreur lors de la régénération", 'error');
         } finally {
-            this.isRegenerating = false;
+            this.setAiLoading(false);
             this.render();
             
             const editor = document.getElementById('rich-editor');
@@ -810,5 +912,7 @@ export const creation = {
                 this.handleEditorInput(editor);
             }
         }
-    }
+    },
+
+
 };

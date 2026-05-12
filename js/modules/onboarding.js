@@ -113,7 +113,7 @@ export const onboarding = {
         }
 
         if (!existing) {
-            console.log("🛠️ [Signal Flow] Création de secours : Ligne utilisateur manquante dans 'users', création en cours...");
+            console.log("🛠️ [Signal Flow] Création du profil utilisateur en base...");
             const { data: inserted, error: insertError } = await supabase
                 .from('users')
                 .insert({
@@ -121,17 +121,18 @@ export const onboarding = {
                     created_at: new Date().toISOString()
                 })
                 .select('id_user')
-                .single();
+                .maybeSingle();
 
             if (insertError) {
-                console.error("❌ [Signal Flow] Échec de la création de secours :", insertError.message);
-            } else {
+                console.error("❌ [Signal Flow] Échec de la création du profil :", insertError.message);
+                this.fetchError = "ERREUR CRÉATION PROFIL : " + insertError.message;
+            } else if (inserted) {
                 this.id_user = inserted.id_user;
-                console.log("✅ [Signal Flow] Ligne créée avec succès (id_user:", this.id_user + ")");
+                console.log("✅ [Signal Flow] Profil créé avec succès. ID Base:", this.id_user);
             }
         } else {
             this.id_user = existing.id_user;
-            console.log("[Signal Flow DB] Utilisateur existant trouvé, id_user:", this.id_user);
+            console.log("👤 [Signal Flow] Profil existant identifié. ID Base:", this.id_user);
         }
     },
 
@@ -163,11 +164,13 @@ export const onboarding = {
                 columns = "linkedin_link";
                 break;
             case 5:
-                updateData = {
-                    tone: this.data.tone.join(', '),
-                    goal: this.data.goal.join(', ')
-                };
-                columns = "tone, goal";
+                // Pour les tables de liaison, on gère la logique dans une fonction dédiée ou ici
+                await this.saveJoinData('user_tones', 'id_tone', this.data.tone);
+                await this.saveJoinData('user_goals', 'id_goal', this.data.goal);
+                
+                // On vide quand même les anciennes colonnes par sécurité/propreté
+                updateData = { tone: null, goal: null };
+                columns = "liaisons tables user_tones/goals";
                 break;
             case 6:
                 updateData = {
@@ -180,16 +183,61 @@ export const onboarding = {
         }
 
         if (Object.keys(updateData).length > 0) {
-            const { error } = await supabase
+            console.log(`[Signal Flow DB] Sauvegarde Step ${stepNumber} :`, updateData);
+            
+            const { data, error } = await supabase
                 .from('users')
                 .update(updateData)
-                .eq('id_auth_user', this.id_auth_user);
+                .eq('id_auth_user', this.id_auth_user)
+                .select();
             
             if (error) {
                 console.error(`[Signal Flow DB] Erreur de mise à jour Step ${stepNumber}:`, error.message);
+            } else if (data && data.length > 0) {
+                console.log(`✅ [Signal Flow DB] Données vérifiées en base pour Step ${stepNumber} :`, data[0]);
             } else {
-                console.log(`[Signal Flow DB] Mise à jour réussie pour id_user: ${this.id_user || 'N/A'} | Colonne(s) modifiée(s) : ${columns}`);
+                console.warn(`⚠️ [Signal Flow DB] Mise à jour effectuée mais aucune donnée retournée pour Step ${stepNumber}.`);
             }
+        }
+    },
+
+    async saveJoinData(tableName, idColumn, idList) {
+        if (!this.id_user) await this.ensureUserExists();
+        
+        if (!this.id_user) {
+            console.error(`🚫 [Signal Flow DB] Impossible d'enregistrer dans ${tableName} : ID utilisateur manquant.`);
+            return;
+        }
+
+        console.log(`🔗 [Signal Flow DB] Synchronisation ${tableName} pour id_user: ${this.id_user}`);
+
+        try {
+            // 1. Supprimer les anciennes sélections
+            const { error: deleteError } = await supabase
+                .from(tableName)
+                .delete()
+                .eq('id_user', this.id_user);
+
+            if (deleteError) throw deleteError;
+
+            // 2. Insérer les nouvelles sélections si la liste n'est pas vide
+            if (idList && idList.length > 0) {
+                const inserts = idList.map(id => ({
+                    id_user: this.id_user,
+                    [idColumn]: id
+                }));
+
+                const { error: insertError } = await supabase
+                    .from(tableName)
+                    .insert(inserts);
+
+                if (insertError) throw insertError;
+                console.log(`✅ [Signal Flow DB] ${idList.length} entrée(s) ajoutée(s) dans ${tableName}`);
+            } else {
+                console.log(`ℹ️ [Signal Flow DB] Aucune sélection à enregistrer pour ${tableName}`);
+            }
+        } catch (err) {
+            console.error(`❌ [Signal Flow DB] Erreur sur ${tableName} :`, err.message);
         }
     },
 
@@ -209,7 +257,6 @@ export const onboarding = {
                 identite: !!(finalProfile.first_name && finalProfile.last_name),
                 topics: !!finalProfile.topic,
                 vecteur: !!finalProfile.linkedin_url,
-                direction: !!(finalProfile.tone && finalProfile.goal),
                 complet: finalProfile.onboarding_completed
             });
         }
@@ -306,39 +353,32 @@ export const onboarding = {
 
     async loadDirectionDataFromDB() {
         if (this.data.directionLoaded) return;
-        this.fetchError = null;
-        let authId = null;
-        
+        if (!this.id_user) await this.ensureUserExists();
+        if (!this.id_user) return;
+
+        console.log(`[Signal Flow] Chargement direction pour id_user: ${this.id_user}`);
+
         try {
-            const { data: { session } } = await supabase.auth.getSession();
-            authId = session?.user?.id;
-            
-            if (!authId) {
-                console.warn("DEBUG: Aucun ID session pour la direction. Utilisation de l'ID de test.");
-                authId = '00000000-0000-0000-0000-000000000000';
+            // Chargement des tons depuis user_tones
+            const { data: tones, error: tonesErr } = await supabase
+                .from('user_tones')
+                .select('id_tone')
+                .eq('id_user', this.id_user);
+
+            if (!tonesErr && tones) {
+                this.data.tone = tones.map(t => t.id_tone);
+                console.log("DEBUG: Tons chargés depuis user_tones:", this.data.tone);
             }
 
-            console.log(`[Signal Flow] Chargement direction pour: ${authId}`);
+            // Chargement des objectifs depuis user_goals
+            const { data: goals, error: goalsErr } = await supabase
+                .from('user_goals')
+                .select('id_goal')
+                .eq('id_user', this.id_user);
 
-            const { data: profile, error } = await supabase
-                .from('users')
-                .select('tone, goal')
-                .eq('id_auth_user', authId)
-                .single();
-
-            if (error && error.code !== 'PGRST116') throw error;
-
-            if (profile) {
-                if (profile.tone) {
-                    const tones = typeof profile.tone === 'string' ? profile.tone.split(',').map(s => s.trim()) : (Array.isArray(profile.tone) ? profile.tone : []);
-                    this.data.tone = tones.filter(t => t);
-                    console.log("DEBUG: Tons chargés:", this.data.tone);
-                }
-                if (profile.goal) {
-                    const goals = typeof profile.goal === 'string' ? profile.goal.split(',').map(s => s.trim()) : (Array.isArray(profile.goal) ? profile.goal : []);
-                    this.data.goal = goals.filter(g => g);
-                    console.log("DEBUG: Objectifs chargés:", this.data.goal);
-                }
+            if (!goalsErr && goals) {
+                this.data.goal = goals.map(g => g.id_goal);
+                console.log("DEBUG: Objectifs chargés depuis user_goals:", this.data.goal);
             }
             
             this.data.directionLoaded = true;
@@ -356,35 +396,32 @@ export const onboarding = {
 
         try {
             // Chargement des tons disponibles depuis la table 'tones'
+            // 1. Chargement des tons disponibles (Table TONES uniquement)
             const { data: tonesData, error: tonesErr } = await supabase
                 .from('tones')
-                .select('*')
+                .select('id_tone, name')
                 .order('name', { ascending: true });
 
-            if (!tonesErr && tonesData && tonesData.length > 0) {
+            if (!tonesErr && tonesData) {
                 this.data.availableTones = tonesData.map(t => ({
-                    id: t.id_tone || t.id || t.id_tones, // Attempting to find the correct ID column
-                    name: t.name || t.label || t.tone || t.value || JSON.stringify(t)
+                    id: t.id_tone,
+                    name: t.name
                 }));
-                console.log('✅ [Onboarding] Tons chargés depuis la DB:', this.data.availableTones);
-            } else if (tonesErr) {
-                console.error('❌ [Onboarding] Erreur chargement tones:', tonesErr.message);
+                console.log('✅ [Onboarding] Liste des Tons chargée (Table TONES uniquement):', this.data.availableTones.length);
             }
 
-            // Chargement des objectifs disponibles depuis la table 'goals'
+            // 2. Chargement des objectifs disponibles (Table GOALS uniquement)
             const { data: goalsData, error: goalsErr } = await supabase
                 .from('goals')
-                .select('*')
+                .select('id_goal, name')
                 .order('name', { ascending: true });
 
-            if (!goalsErr && goalsData && goalsData.length > 0) {
+            if (!goalsErr && goalsData) {
                 this.data.availableGoals = goalsData.map(g => ({
-                    id: g.id_goal || g.id || g.id_goals, // Attempting to find the correct ID column
-                    name: g.name || g.label || g.goal || g.value || JSON.stringify(g)
+                    id: g.id_goal,
+                    name: g.name
                 }));
-                console.log('✅ [Onboarding] Objectifs chargés depuis la DB:', this.data.availableGoals);
-            } else if (goalsErr) {
-                console.error('❌ [Onboarding] Erreur chargement goals:', goalsErr.message);
+                console.log('✅ [Onboarding] Liste des Objectifs chargée (Table GOALS uniquement):', this.data.availableGoals.length);
             }
 
             this.data.optionsLoaded = true;
@@ -410,44 +447,29 @@ export const onboarding = {
         if (!container) return;
         
         container.innerHTML = `
-            <div class="flex-1 flex flex-col items-center justify-center p-4 md:p-8 view-transition bg-black/80 backdrop-blur-xl min-h-screen overflow-hidden">
-                <div class="w-full max-w-6xl bg-zinc-950 p-10 lg:p-14 rounded-[1.5rem] relative overflow-hidden shadow-[0_0_60px_rgba(0,0,0,1)] border border-white/20 animate-in zoom-in-95 duration-700 flex flex-col justify-between min-h-[600px] max-h-[90vh]">
+            <div class="flex-1 flex flex-col items-center justify-center p-4 md:p-8 bg-zinc-950 min-h-screen">
+                <div class="w-full max-w-6xl bg-zinc-900/50 p-10 lg:p-14 rounded-3xl border border-white/10 flex flex-col justify-between min-h-[600px] max-h-[90vh]">
                     
-                    <!-- Header Technique Haute-Fidélité -->
-                    <div class="absolute top-0 left-0 w-full p-6 flex flex-col gap-3 bg-zinc-900/40 border-b border-white/5">
-                        <div class="flex justify-between items-end px-2">
+                    <!-- Header Technique -->
+                    <div class="w-full pb-6 flex flex-col gap-3 border-b border-white/5">
+                        <div class="flex justify-between items-end">
                             <div class="flex flex-col gap-1">
                                 <div class="flex items-center gap-3">
-                                    <div class="w-2 h-2 bg-blue-500 rounded-full animate-pulse shadow-[0_0_12px_rgba(59,130,246,1)]"></div>
-                                    <span class="text-[10px] font-mono text-blue-500 tracking-[0.3em] uppercase font-bold">ÉTAT : ANALYSE DU SIGNAL_0${this.step}</span>
+                                    <div class="w-2 h-2 bg-blue-500 rounded-full"></div>
+                                    <span class="text-[10px] font-mono text-blue-500 tracking-widest uppercase font-bold">ÉTAPE 0${this.step}</span>
                                 </div>
-                                <span class="text-[9px] font-mono text-zinc-600 tracking-widest uppercase">SÉQUENCE : 0${this.step} / 0${this.totalSteps}</span>
+                                <span class="text-[9px] font-mono text-zinc-500 tracking-widest uppercase">${this.step} / ${this.totalSteps}</span>
                             </div>
                             <div class="text-right">
-                                <span class="text-[10px] font-mono text-blue-400 tracking-widest uppercase font-bold">${Math.round((this.step / this.totalSteps) * 100)}% SYNCHRONISÉ</span>
+                                <span class="text-[10px] font-mono text-zinc-400 tracking-widest uppercase font-bold">${Math.round((this.step / this.totalSteps) * 100)}% COMPLÉTÉ</span>
                             </div>
                         </div>
-                        <div class="flex flex-col gap-4 flex-1">
-                            <div class="flex gap-1">
-                                ${[1, 2, 3, 4, 5, 6].map(i => {
-                                    const progress = (this.step / this.totalSteps) * 6;
-                                    const isFilled = progress >= i;
-                                    const isCurrent = Math.ceil(progress) === i;
-                                    const labels = ["INITIALISATION", "STRATÉGIE", "CALIBRATION", "VECTEUR", "DIRECTION", "DÉPLOIEMENT"];
-                                    return `
-                                        <div class="relative group">
-                                            <div class="absolute -top-4 left-0 text-[7px] font-mono text-zinc-700 tracking-widest uppercase">${labels[i-1]}</div>
-                                            <div class="h-1.5 w-full rounded-full bg-white/[0.03] border border-white/[0.05] overflow-hidden">
-                                                <div class="h-full bg-blue-500 transition-all duration-1000 ease-out ${isFilled ? 'w-full' : 'w-0'} ${isCurrent ? 'shadow-[0_0_20px_rgba(59,130,246,0.9)]' : ''}"></div>
-                                            </div>
-                                        </div>
-                                    `;
-                                }).join('')}
-                            </div>
+                        <div class="h-1 w-full bg-white/5 rounded-full overflow-hidden">
+                            <div class="h-full bg-blue-600 transition-all duration-500 ease-out" style="width: ${(this.step / this.totalSteps) * 100}%"></div>
                         </div>
                     </div>
 
-                    <div id="step-content" class="flex-1 flex flex-col justify-center mt-12 py-8 overflow-hidden">
+                    <div id="step-content" class="flex-1 flex flex-col justify-center py-8">
                         ${this.fetchError ? `
                             <div class="flex flex-col items-center justify-center space-y-8 animate-in fade-in duration-500 py-12">
                                 <div class="w-24 h-24 bg-red-500/10 rounded-[2rem] flex items-center justify-center border border-red-500/20 shadow-[0_0_40px_rgba(239,68,68,0.1)]">
@@ -467,8 +489,8 @@ export const onboarding = {
 
                     <div class="flex gap-8 pt-8 border-t border-white/5 items-center">
                         ${this.step > 1 ? `<button id="onb-prev" class="btn-secondary px-12 py-4 font-mono text-[10px] uppercase tracking-widest">Retour</button>` : ''}
-                        <button id="onb-next" class="btn-neon btn-scan flex-1 uppercase tracking-[0.4em] text-[10px] font-black py-5 shadow-[0_0_40px_rgba(59,130,246,0.25)]">
-                            ${this.step === this.totalSteps ? 'Finaliser la Synchronisation' : 'Séquence Suivante'}
+                        <button id="onb-next" class="btn-neon flex-1 uppercase tracking-widest text-[10px] font-black py-5">
+                            ${this.step === this.totalSteps ? 'Terminer' : 'Continuer'}
                         </button>
                     </div>
                 </div>
@@ -483,7 +505,7 @@ export const onboarding = {
         switch(this.step) {
             case 1:
                 return `
-                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center animate-in fade-in slide-in-from-bottom-8 duration-1000">
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
                         <div class="space-y-10">
                             <div class="space-y-4">
                                 <h2 class="text-7xl font-black text-white tracking-tighter leading-[0.85] uppercase">
@@ -504,8 +526,8 @@ export const onboarding = {
                             </div>
                         </div>
 
-                        <div class="p-12 rounded-[2.5rem] bg-zinc-900/50 border border-white/5 relative overflow-hidden group shadow-inner">
-                            <div class="absolute -right-12 -top-12 w-64 h-64 bg-blue-600/5 blur-[80px] rounded-full group-hover:bg-blue-600/10 transition-all duration-1000"></div>
+                        <div class="p-12 rounded-3xl bg-zinc-900 border border-white/5 relative overflow-hidden group">
+                            <div class="absolute -right-12 -top-12 w-64 h-64 bg-blue-600/5 rounded-full"></div>
                             
                             <div class="space-y-8 relative z-10">
                                 <div class="flex items-center gap-4 text-blue-500">
@@ -518,7 +540,7 @@ export const onboarding = {
                 `;
             case 2:
                 return `
-                    <div class="flex flex-col items-center max-w-5xl mx-auto w-full animate-in fade-in slide-in-from-bottom-8 duration-1000">
+                    <div class="flex flex-col items-center max-w-5xl mx-auto w-full">
                         <div class="grid grid-cols-1 lg:grid-cols-2 gap-20 items-center w-full min-h-[400px]">
                             <!-- Left: Storytelling -->
                             <div class="space-y-8">
@@ -537,7 +559,7 @@ export const onboarding = {
                                 </p>
                             </div>
                             
-                            <div class="w-full max-w-md ml-auto space-y-10 bg-zinc-900/40 p-10 rounded-[2.5rem] border border-white/5 shadow-2xl relative overflow-hidden group">
+                            <div class="w-full max-w-md ml-auto space-y-8 bg-zinc-900 p-10 rounded-3xl border border-white/5 relative overflow-hidden">
                                 <div class="space-y-8 relative z-10">
                                     <div class="space-y-3 group/input">
                                         <label class="text-[10px] font-mono text-zinc-500 uppercase tracking-[0.2em] ml-1 group-focus-within/input:text-blue-400 transition-colors font-bold">Prénom</label>
@@ -560,7 +582,7 @@ export const onboarding = {
                 if (!this.topicsLoaded) this.loadTopicsFromDB();
                 
                 return `
-                    <div class="flex flex-col items-center max-w-5xl mx-auto w-full animate-in fade-in slide-in-from-bottom-8 duration-1000">
+                    <div class="flex flex-col items-center max-w-5xl mx-auto w-full">
                         <div class="grid grid-cols-1 lg:grid-cols-2 gap-20 items-center w-full min-h-[400px]">
                             <!-- Left: Storytelling -->
                             <div class="space-y-8">
@@ -579,7 +601,7 @@ export const onboarding = {
                                 </p>
                             </div>
                             
-                            <div class="w-full max-w-md ml-auto space-y-10 bg-zinc-900/40 p-10 rounded-[2.5rem] border border-white/5 shadow-2xl relative overflow-hidden group">
+                            <div class="w-full max-w-md ml-auto space-y-8 bg-zinc-900 p-10 rounded-3xl border border-white/5 relative overflow-hidden">
                                 <div class="relative z-10 space-y-8">
                                     <div class="space-y-4">
                                         <label class="text-[10px] font-mono text-zinc-500 uppercase tracking-[0.2em] ml-1 font-bold">Ajouter une thématique (1 à 3 max)</label>
@@ -601,7 +623,7 @@ export const onboarding = {
                                         <div id="topic-container" class="flex flex-wrap gap-2 min-h-[140px] p-4 bg-zinc-950/50 border border-white/10 rounded-2xl items-start">
                                             ${!this.topicsLoaded ? '<div class="flex items-center gap-3 text-zinc-700 p-2 animate-pulse"><i data-lucide="refresh-cw" class="w-3.5 h-3.5 animate-spin"></i><span class="text-[10px] uppercase tracking-widest font-mono">Synchronisation...</span></div>' : ''}
                                             ${this.topicsLoaded && this.data.niche.length === 0 ? '<span class="text-zinc-700 text-[10px] italic p-2 uppercase tracking-widest">Prêt pour la synchronisation (aucun sujet détecté)</span>' : this.data.niche.map((t, idx) => `
-                                                <div class="inline-flex items-center gap-2 px-3 py-1.5 bg-zinc-800/50 border border-white/10 rounded-lg text-[11px] text-zinc-300 group/token hover:border-blue-500/50 transition-all animate-in zoom-in-95">
+                                                <div class="inline-flex items-center gap-2 px-3 py-1.5 bg-zinc-800 border border-white/10 rounded-lg text-[11px] text-zinc-300">
                                                     <span>${t}</span>
                                                     <button onclick="window.onboarding.removeTopic(${idx})" class="text-zinc-500 hover:text-red-400 transition-colors">
                                                         <i data-lucide="x" class="w-3.5 h-3.5"></i>
@@ -619,7 +641,7 @@ export const onboarding = {
                 `;
             case 4:
                 return `
-                    <div class="flex flex-col items-center max-w-5xl mx-auto w-full animate-in fade-in slide-in-from-bottom-8 duration-1000">
+                    <div class="flex flex-col items-center max-w-5xl mx-auto w-full">
                         <div class="grid grid-cols-1 lg:grid-cols-2 gap-20 items-center w-full min-h-[400px]">
                             <div class="space-y-8">
                                 <div class="space-y-4">
@@ -631,7 +653,7 @@ export const onboarding = {
                                 </div>
                             </div>
                             
-                            <div class="w-full max-w-md ml-auto space-y-10 bg-zinc-900/40 p-12 rounded-[3rem] border border-white/5 shadow-2xl relative overflow-hidden group flex flex-col items-center justify-center">
+                            <div class="w-full max-w-md ml-auto space-y-8 bg-zinc-900 p-12 rounded-3xl border border-white/5 relative overflow-hidden flex flex-col items-center justify-center">
                                 <div class="relative z-10 flex flex-col items-center w-full">
                                     <h3 class="text-2xl font-black text-white tracking-tighter uppercase mb-8">LinkedIn</h3>
                                     <div class="w-full space-y-4 group/input">
@@ -646,12 +668,13 @@ export const onboarding = {
                 `;
             case 5: {
                 if (!this.data.directionLoaded) this.loadDirectionDataFromDB();
+                if (!this.data.optionsLoaded) this.loadTonesAndGoalsOptions();
 
-                const toneOptions = this.data.availableTones.length > 0 ? this.data.availableTones : [];
-                const goalOptions = this.data.availableGoals.length > 0 ? this.data.availableGoals : [];
+                const toneOptions = this.data.availableTones || [];
+                const goalOptions = this.data.availableGoals || [];
 
                 return `
-                    <div class="flex flex-col items-center max-w-5xl mx-auto w-full animate-in fade-in slide-in-from-bottom-8 duration-1000">
+                    <div class="flex flex-col items-center max-w-5xl mx-auto w-full">
                         <div class="grid grid-cols-1 lg:grid-cols-2 gap-20 items-center w-full min-h-[450px]">
                             <!-- Left: Storytelling -->
                             <div class="space-y-8">
@@ -674,7 +697,7 @@ export const onboarding = {
                             <div class="w-full max-w-md ml-auto flex flex-col gap-6">
 
                                 <!-- Section TON -->
-                                <div class="bg-zinc-900/40 p-8 rounded-[2.5rem] border border-white/5 shadow-2xl">
+                                <div class="bg-zinc-900 p-8 rounded-3xl border border-white/5">
                                     <div class="space-y-5">
                                         <label class="text-[10px] font-mono text-zinc-500 uppercase tracking-[0.3em] font-bold">Modulation du Ton (1 à 3 max)</label>
                                         ${errorMsg('tone')}
@@ -703,7 +726,7 @@ export const onboarding = {
                                 </div>
 
                                 <!-- Section OBJECTIF -->
-                                <div class="bg-zinc-900/40 p-8 rounded-[2.5rem] border border-white/5 shadow-2xl">
+                                <div class="bg-zinc-900 p-8 rounded-3xl border border-white/5">
                                     <div class="space-y-5">
                                         <label class="text-[10px] font-mono text-zinc-500 uppercase tracking-[0.3em] font-bold">Objectif Stratégique (1 à 3 max)</label>
                                         ${errorMsg('goal')}
@@ -738,7 +761,7 @@ export const onboarding = {
             }
             case 6:
                 return `
-                    <div class="flex flex-col items-center max-w-5xl mx-auto w-full animate-in fade-in slide-in-from-bottom-8 duration-1000">
+                    <div class="flex flex-col items-center max-w-5xl mx-auto w-full">
                         <div class="grid grid-cols-1 lg:grid-cols-2 gap-20 items-center w-full min-h-[400px]">
                             <!-- Left: Storytelling -->
                             <div class="space-y-8">
@@ -758,7 +781,7 @@ export const onboarding = {
                             </div>
                             
                             <!-- Right: Configuration -->
-                            <div class="w-full max-w-md ml-auto flex flex-col items-center justify-center space-y-10 bg-zinc-900/40 p-12 rounded-[3rem] border border-white/5 shadow-2xl relative overflow-hidden group">
+                            <div class="w-full max-w-md ml-auto flex flex-col items-center justify-center space-y-8 bg-zinc-900 p-12 rounded-3xl border border-white/5 relative overflow-hidden">
                                 <div class="absolute inset-0 bg-gradient-to-br from-blue-600/5 to-transparent"></div>
                                 
                                 <div class="relative z-10 w-full space-y-8">

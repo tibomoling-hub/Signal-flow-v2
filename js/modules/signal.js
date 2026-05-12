@@ -28,7 +28,7 @@ export const signal = {
                         )
                     )
                 `)
-                .order('score', { ascending: false });
+                .order('created_at', { ascending: false });
 
             if (error) throw error;
 
@@ -53,45 +53,65 @@ export const signal = {
     },
 
     async handlePublish(trendId) {
+        console.log('🚀 [Signal Flow] handlePublish cliqué pour trend:', trendId);
         if (this.loadingTrends[trendId]) return;
 
         // 1. Basculer vers la Création avec le skeleton de chargement
         window.dashboard.setTab('creation');
-        window.creation.isAiLoading = true;
-        window.creation.render();
+        creation.isAiLoading = true;
+        creation.render();
 
         try {
             // 2. Session utilisateur
             const { data: { session } } = await supabase.auth.getSession();
+            console.log('👤 [Signal Flow] Session active:', session ? 'OUI' : 'NON');
             if (!session) throw new Error('Session non trouvée');
 
-            // 3. Profil utilisateur
+            // 3. Profil utilisateur (données de base)
             const { data: profile, error: profileError } = await supabase
                 .from('users')
-                .select('id_user, tone, goal')
+                .select('id_user')
                 .eq('id_auth_user', session.user.id)
                 .single();
 
-            if (profileError) throw profileError;
+            if (profileError) {
+                console.error('❌ [Signal Flow] Erreur profil:', profileError);
+                throw profileError;
+            }
 
-            // 4. Appel au Webhook Make
-            console.log('📡 [Signal Flow] Appel webhook Make, trend:', trendId);
-            const response = await fetch('https://hook.eu1.make.com/4o6kwqi31dmho63dfpycc7gonqhn3wgp', {
+            // 4. Récupération des Tons et Objectifs depuis les tables de liaison (Multi-choix)
+            const [tonesRes, goalsRes] = await Promise.all([
+                supabase.from('user_tones').select('id_tone').eq('id_user', profile.id_user),
+                supabase.from('user_goals').select('id_goal').eq('id_user', profile.id_user)
+            ]);
+
+            // On garde le format tableau pour le JSON
+            const allTones = (tonesRes.data || []).map(t => t.id_tone);
+            const allGoals = (goalsRes.data || []).map(g => g.id_goal);
+
+            console.log('🎯 [Signal Flow] Préférences récupérées (Array) :', { allTones, allGoals });
+
+            // 5. Appel au Webhook n8n
+            const webhookBody = {
+                id_trend: trendId,
+                id_user: profile.id_user,
+                id_user_tone: allTones,
+                id_user_goal: allGoals
+            };
+
+            console.log('📡 [Signal Flow] Envoi au Webhook (Array Format) :', webhookBody);
+
+            const response = await fetch('https://oreegami.app.n8n.cloud/webhook-test/creation-post', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    id_trend: trendId,
-                    id_user: profile.id_user,
-                    tone: profile.tone || 'Expert',
-                    goal: profile.goal || 'growth'
-                })
+                body: JSON.stringify(webhookBody)
             });
 
             if (!response.ok) throw new Error('Erreur HTTP: ' + response.status);
 
-            // 5. Lecture et parsing de la réponse
+            // 5. Délégation au module Creation pour le traitement du retour
             const rawText = await response.text();
-            console.log('📨 [Signal Flow] Réponse Make brute:', rawText);
+            console.log('📨 [Signal Flow] Réponse brute du webhook:', rawText);
 
             let payload = {};
             try {
@@ -101,29 +121,17 @@ export const signal = {
                 payload = { content_body: rawText };
             }
 
-            console.log('✅ [Signal Flow] Payload Make:', payload);
+            console.log('✅ [Signal Flow] Payload reçu:', payload);
 
-            // 6. Extraction de content_body (le champ envoyé par Make)
-            const bodyText = payload.content_body || payload.body_content || '';
+            // Utilise la logique centralisée de Creation pour gérer le contenu ou l'ID (polling)
+            creation.loadGeneratedContent(payload);
 
-            if (!bodyText) {
-                console.warn('⚠️ [Signal Flow] content_body vide dans la réponse Make');
-                throw new Error('Contenu vide reçu de Make');
-            }
-
-            // 7. Injection directe dans la Création
-            window.creation.content.post.body = bodyText;
-            window.creation.currentPostId = payload.id_post || null;
-            window.creation.format = 'post';
-            window.creation.isAiLoading = false;
-            window.creation.render();
-
-            console.log('🎉 [Signal Flow] Contenu injecté dans la Création avec succès !');
+            console.log('🎉 [Signal Flow] Traitement du retour initié !');
 
         } catch (e) {
             console.error('❌ [Signal Flow] Échec:', e.message);
-            window.creation.isAiLoading = false;
-            window.creation.render();
+            creation.isAiLoading = false;
+            creation.render();
         }
     },
 
@@ -297,7 +305,7 @@ export const signal = {
 
         // --- Publish Button ---
         var isLoading = !!this.loadingTrends[trend.id_trend];
-        var btnText = isLoading ? 'Génération par l\'IA...' : 'Publier';
+        var btnText = isLoading ? 'Génération par l\'IA...' : 'Créer';
         var btnIcon = isLoading ? '<div class="w-3.5 h-3.5 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>' : '';
         var disabled = isLoading ? 'disabled' : '';
 

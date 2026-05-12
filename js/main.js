@@ -16,8 +16,7 @@ const views = {
     auth: () => `
         <div class="flex flex-col md:flex-row min-h-screen view-transition bg-anthracite-950 overflow-hidden">
             <!-- Left Side: Branding -->
-            <div class="md:w-1/2 flex flex-col justify-center p-12 md:p-24 relative overflow-hidden border-r border-white/5">
-                <div class="absolute inset-0 bg-gradient-to-br from-blue-600/10 via-transparent to-transparent opacity-50"></div>
+            <div class="md:w-1/2 flex flex-col justify-center p-12 md:p-24 relative overflow-hidden border-r border-white/5 bg-zinc-900/50">
                 
                 <div class="relative z-10 space-y-12">
                     <div class="flex items-center gap-4">
@@ -47,8 +46,7 @@ const views = {
                     </div>
                 </div>
                 
-                <!-- Decorative element -->
-                <div class="absolute -bottom-24 -left-24 w-96 h-96 bg-blue-600/10 blur-[120px] rounded-full"></div>
+
             </div>
 
             <!-- Right Side: Authentification -->
@@ -61,7 +59,7 @@ const views = {
 
                     ${state.authMode === 'login' ? `
                         <form id="auth-form" class="space-y-6">
-                            <div id="auth-error" class="hidden p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-[11px] font-bold uppercase tracking-wider animate-in fade-in slide-in-from-top-2">
+                            <div id="auth-error" class="hidden p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-[11px] font-bold uppercase tracking-wider">
                                 Identifiants incorrects
                             </div>
                             
@@ -102,7 +100,7 @@ const views = {
                         </form>
                     ` : `
                         <form id="signup-form" class="space-y-6">
-                            <div id="auth-error" class="hidden p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-[11px] font-bold uppercase tracking-wider animate-in fade-in slide-in-from-top-2">
+                            <div id="auth-error" class="hidden p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-[11px] font-bold uppercase tracking-wider">
                                 Erreur d'inscription
                             </div>
                             
@@ -265,9 +263,8 @@ function attachEventListeners() {
                 emailInput.classList.add('border-red-500/50', 'bg-red-500/5');
                 passwordInput.classList.add('border-red-500/50', 'bg-red-500/5');
                 
-                // Shake effect (optional micro-animation)
-                authForm.classList.add('animate-shake');
-                setTimeout(() => authForm.classList.remove('animate-shake'), 500);
+                // authForm.classList.add('animate-shake');
+                // setTimeout(() => authForm.classList.remove('animate-shake'), 500);
 
             } finally {
                 submitBtn.disabled = false;
@@ -409,7 +406,6 @@ async function init() {
                 if (profile.onboarding_completed) {
                     state.currentView = 'dashboard';
                 } else {
-                    // Optionnel : on pourrait aussi essayer de deviner l'étape actuelle
                     state.currentView = 'onboarding';
                 }
             } else {
