@@ -7,7 +7,10 @@ export const settings = {
     showModal: false,
     initialData: null,
     isLoaded: false,
-    
+    errors: {
+        tone: null,
+        goal: null
+    },
     // État local indépendant
     data: {
         userId: null,
@@ -66,9 +69,8 @@ export const settings = {
 
             // Map profile data
             this.data.userId = profile.id_user;
-            this.data.firstName = profile.first_name || profile.full_name || '';
-            this.data.lastName = profile.last_name || profile.company || '';
-            this.data.description = profile.description || '';
+            this.data.firstName = profile.first_name || '';
+            this.data.lastName = profile.last_name || '';
             this.data.linkedinUrl = profile.linkedin_link || profile.linkedin_url || '';
             
             if (profile.topic) {
@@ -110,22 +112,28 @@ export const settings = {
     },
 
     toggleTone(toneId) {
+        this.errors.tone = null;
         if (this.data.tone.includes(toneId)) {
             this.data.tone = this.data.tone.filter(id => id !== toneId);
         } else {
             if (this.data.tone.length < 3) {
                 this.data.tone.push(toneId);
+            } else {
+                this.errors.tone = "Maximum 3 tons autorisés.";
             }
         }
         this.updateSaveButton();
     },
 
     toggleGoal(goalId) {
+        this.errors.goal = null;
         if (this.data.goal.includes(goalId)) {
             this.data.goal = this.data.goal.filter(id => id !== goalId);
         } else {
             if (this.data.goal.length < 3) {
                 this.data.goal.push(goalId);
+            } else {
+                this.errors.goal = "Maximum 3 objectifs autorisés.";
             }
         }
         this.updateSaveButton();
@@ -171,6 +179,24 @@ export const settings = {
     },
 
     async save() {
+        // Validation
+        this.errors = { tone: null, goal: null };
+        let hasError = false;
+
+        if (this.data.tone.length < 1) {
+            this.errors.tone = "Veuillez ajouter au moins un ton.";
+            hasError = true;
+        }
+        if (this.data.goal.length < 1) {
+            this.errors.goal = "Veuillez ajouter au moins un objectif.";
+            hasError = true;
+        }
+
+        if (hasError) {
+            this.render();
+            return;
+        }
+
         this.isSaving = true;
         this.saveStatus = null;
         this.render();
@@ -182,11 +208,8 @@ export const settings = {
             const updateData = {
                 first_name: this.data.firstName,
                 last_name: this.data.lastName,
-                company: this.data.lastName, // Map Brand/Entreprise to company column
-                description: this.data.description,
                 topic: this.data.niche.join(', '),
-                linkedin_link: this.data.linkedinUrl,
-                linkedin_url: this.data.linkedinUrl
+                linkedin_link: this.data.linkedinUrl
             };
 
             const { error } = await supabase
@@ -226,7 +249,9 @@ export const settings = {
                 }
             }, 2000);
         } catch (e) {
-            console.error("Settings: Save error", e);
+            console.error("Settings: Save error", e.message || e);
+            if (e.details) console.error("Details:", e.details);
+            if (e.hint) console.error("Hint:", e.hint);
             this.saveStatus = 'error';
         } finally {
             this.isSaving = false;
@@ -346,19 +371,14 @@ export const settings = {
                         </div>
                         <div class="space-y-6">
                             <div class="space-y-2">
-                                <label class="text-[10px] font-mono text-zinc-500 uppercase tracking-widest font-bold">Prénom</label>
+                                <label class="text-[10px] font-mono text-zinc-500 uppercase tracking-widest font-bold">Nom</label>
                                 <input type="text" value="${this.data.firstName}" oninput="window.settings.data.firstName = this.value; window.settings.updateSaveButton()" 
                                        class="w-full bg-zinc-950 border border-white/5 rounded-2xl px-6 py-4 text-white placeholder-zinc-800 outline-none focus:ring-1 focus:ring-blue-500/30 transition-all font-medium text-sm">
                             </div>
                             <div class="space-y-2">
-                                <label class="text-[10px] font-mono text-zinc-500 uppercase tracking-widest font-bold">Marque / Compagnie</label>
+                                <label class="text-[10px] font-mono text-zinc-500 uppercase tracking-widest font-bold">Prénom</label>
                                 <input type="text" value="${this.data.lastName}" oninput="window.settings.data.lastName = this.value; window.settings.updateSaveButton()" 
                                        class="w-full bg-zinc-950 border border-white/5 rounded-2xl px-6 py-4 text-white placeholder-zinc-800 outline-none focus:ring-1 focus:ring-blue-500/30 transition-all font-medium text-sm">
-                            </div>
-                            <div class="space-y-2">
-                                <label class="text-[10px] font-mono text-zinc-500 uppercase tracking-widest font-bold">Descriptif / Mission</label>
-                                <textarea oninput="window.settings.data.description = this.value; window.settings.updateSaveButton()" 
-                                          class="w-full bg-zinc-950 border border-white/5 rounded-2xl px-6 py-4 text-white placeholder-zinc-800 outline-none focus:ring-1 focus:ring-blue-500/30 transition-all font-medium text-sm h-24 resize-none">${this.data.description || ''}</textarea>
                             </div>
                         </div>
                     </div>
@@ -413,6 +433,7 @@ export const settings = {
                             <!-- Modulation du Ton -->
                             <div class="space-y-6">
                                 <label class="text-[10px] font-mono text-zinc-500 uppercase tracking-[0.3em] font-bold">Modulation du Ton (1 à 3 max)</label>
+                                ${this.errors.tone ? `<p class="text-red-400 text-[10px] font-bold uppercase tracking-wider">${this.errors.tone}</p>` : ''}
                                 <div class="flex flex-wrap gap-2">
                                     ${this.data.availableTones.map(t => {
                                         const isSelected = this.data.tone.includes(t.id);
@@ -432,6 +453,7 @@ export const settings = {
                             <!-- Objectif Stratégique -->
                             <div class="space-y-6">
                                 <label class="text-[10px] font-mono text-zinc-500 uppercase tracking-[0.3em] font-bold">Objectif Stratégique (1 à 3 max)</label>
+                                ${this.errors.goal ? `<p class="text-red-400 text-[10px] font-bold uppercase tracking-wider">${this.errors.goal}</p>` : ''}
                                 <div class="flex flex-wrap gap-2">
                                     ${this.data.availableGoals.map(g => {
                                         const isSelected = this.data.goal.includes(g.id);

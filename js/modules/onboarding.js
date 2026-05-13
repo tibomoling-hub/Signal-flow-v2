@@ -64,8 +64,8 @@ export const onboarding = {
     validateCurrentStep() {
         this.errors = {};
         if (this.step === 2) {
-            if (!this.data.firstName.trim()) this.errors.firstName = "Le prénom est requis.";
-            if (!this.data.lastName.trim()) this.errors.lastName = "Le nom est requis.";
+            if (!this.data.firstName.trim()) this.errors.firstName = "Le nom est requis.";
+            if (!this.data.lastName.trim()) this.errors.lastName = "Le prénom est requis.";
         } else if (this.step === 3) {
             if (this.data.niche.length < 1) this.errors.niche = "Veuillez ajouter au moins une thématique.";
             if (this.data.niche.length > 3) this.errors.niche = "Maximum 3 thématiques autorisées.";
@@ -168,8 +168,8 @@ export const onboarding = {
                 await this.saveJoinData('user_tones', 'id_tone', this.data.tone);
                 await this.saveJoinData('user_goals', 'id_goal', this.data.goal);
                 
-                // On vide quand même les anciennes colonnes par sécurité/propreté
-                updateData = { tone: null, goal: null };
+                // Les colonnes tone/goal n'existent plus dans la table users (migration vers tables de liaison)
+                updateData = {};
                 columns = "liaisons tables user_tones/goals";
                 break;
             case 6:
@@ -562,14 +562,14 @@ export const onboarding = {
                             <div class="w-full max-w-md ml-auto space-y-8 bg-zinc-900 p-10 rounded-3xl border border-white/5 relative overflow-hidden">
                                 <div class="space-y-8 relative z-10">
                                     <div class="space-y-3 group/input">
-                                        <label class="text-[10px] font-mono text-zinc-500 uppercase tracking-[0.2em] ml-1 group-focus-within/input:text-blue-400 transition-colors font-bold">Prénom</label>
-                                        <input type="text" id="onb-firstname" value="${this.data.firstName}" placeholder="Votre prénom" 
+                                        <label class="text-[10px] font-mono text-zinc-500 uppercase tracking-[0.2em] ml-1 group-focus-within/input:text-blue-400 transition-colors font-bold">Nom</label>
+                                        <input type="text" id="onb-firstname" value="${this.data.firstName}" placeholder="Votre nom" 
                                                class="w-full bg-zinc-950 border border-white/10 rounded-2xl px-6 py-5 text-white placeholder-zinc-800 outline-none focus:ring-1 focus:ring-cyan-500/50 focus:border-cyan-500/50 transition-all font-medium text-sm">
                                         ${errorMsg('firstName')}
                                     </div>
                                     <div class="space-y-3 group/input">
-                                        <label class="text-[10px] font-mono text-zinc-500 uppercase tracking-[0.2em] ml-1 group-focus-within/input:text-blue-400 transition-colors font-bold">Nom</label>
-                                        <input type="text" id="onb-lastname" value="${this.data.lastName}" placeholder="Votre nom" 
+                                        <label class="text-[10px] font-mono text-zinc-500 uppercase tracking-[0.2em] ml-1 group-focus-within/input:text-blue-400 transition-colors font-bold">Prénom</label>
+                                        <input type="text" id="onb-lastname" value="${this.data.lastName}" placeholder="Votre prénom" 
                                                class="w-full bg-zinc-950 border border-white/10 rounded-2xl px-6 py-5 text-white placeholder-zinc-800 outline-none focus:ring-1 focus:ring-cyan-500/50 focus:border-cyan-500/50 transition-all font-medium text-sm">
                                         ${errorMsg('lastName')}
                                     </div>
