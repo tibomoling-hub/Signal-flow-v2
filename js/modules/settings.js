@@ -1,5 +1,4 @@
 import { supabase } from '../supabase.js';
-import { onboarding } from './onboarding.js';
 
 export const settings = {
     isSaving: false,
@@ -8,23 +7,33 @@ export const settings = {
     showModal: false,
     initialData: null,
     isLoaded: false,
+    
+    // État local indépendant
+    data: {
+        userId: null,
+        firstName: '',
+        lastName: '',
+        description: '',
+        niche: [],
+        linkedinUrl: '',
+        tone: [],
+        goal: [],
+        availableTones: [],
+        availableGoals: []
+    },
 
     init() {
-        if (!onboarding.data.availableTones || onboarding.data.availableTones.length === 0) {
-            // Pre-fill with defaults if not loaded yet, but loadUserData will overwrite
-        }
-
         // Clone initial state to track changes
         this.initialData = JSON.parse(JSON.stringify({
-            firstName: onboarding.data.firstName,
-            lastName: onboarding.data.lastName,
-            description: onboarding.data.description,
-            niche: [...onboarding.data.niche],
-            linkedinUrl: onboarding.data.linkedinUrl,
-            tone: [...(onboarding.data.tone || [])],
-            goal: [...(onboarding.data.goal || [])],
-            availableTones: [...(onboarding.data.availableTones || [])],
-            availableGoals: [...(onboarding.data.availableGoals || [])]
+            firstName: this.data.firstName,
+            lastName: this.data.lastName,
+            description: this.data.description,
+            niche: [...this.data.niche],
+            linkedinUrl: this.data.linkedinUrl,
+            tone: [...(this.data.tone || [])],
+            goal: [...(this.data.goal || [])],
+            availableTones: [...(this.data.availableTones || [])],
+            availableGoals: [...(this.data.availableGoals || [])]
         }));
         this.hasChanges = false;
     },
@@ -38,38 +47,41 @@ export const settings = {
 
             const authId = session.user.id;
 
-            // Fetch User Profile + Master Options (Tones/Goals)
-            const [profileRes, tonesRes, goalsRes] = await Promise.all([
-                supabase.from('users').select('*').eq('id_auth_user', authId).single(),
-                supabase.from('tones').select('name').order('name'),
-                supabase.from('goals').select('name').order('name')
+            // 1. Fetch User Profile
+            const { data: profile, error: profileError } = await supabase
+                .from('users')
+                .select('*')
+                .eq('id_auth_user', authId)
+                .single();
+
+            if (profileError || !profile) throw profileError || new Error("Profile not found");
+
+            // 2. Fetch Master Options + User Selections (using id_user)
+            const [tonesRes, goalsRes, userTonesRes, userGoalsRes] = await Promise.all([
+                supabase.from('tones').select('id_tone, name').order('name'),
+                supabase.from('goals').select('id_goal, name').order('name'),
+                supabase.from('user_tones').select('id_tone').eq('id_user', profile.id_user),
+                supabase.from('user_goals').select('id_goal').eq('id_user', profile.id_user)
             ]);
 
-            if (profileRes.data) {
-                const p = profileRes.data;
-                onboarding.data.firstName = p.full_name || p.first_name || '';
-                onboarding.data.lastName = p.company || p.last_name || '';
-                onboarding.data.description = p.description || '';
-                onboarding.data.linkedinUrl = p.linkedin_url || p.linkedin_link || '';
-                
-                // Topics
-                if (p.topic) {
-                    onboarding.data.niche = typeof p.topic === 'string' ? p.topic.split(',').map(s => s.trim()).filter(Boolean) : (Array.isArray(p.topic) ? p.topic : []);
-                }
-
-                // Tone (can be string or array in DB, we want array in state)
-                if (p.tone) {
-                    onboarding.data.tone = typeof p.tone === 'string' ? p.tone.split(',').map(s => s.trim()).filter(Boolean) : (Array.isArray(p.tone) ? p.tone : []);
-                }
-
-                // Goal
-                if (p.goal) {
-                    onboarding.data.goal = typeof p.goal === 'string' ? p.goal.split(',').map(s => s.trim()).filter(Boolean) : (Array.isArray(p.goal) ? p.goal : []);
-                }
+            // Map profile data
+            this.data.userId = profile.id_user;
+            this.data.firstName = profile.first_name || profile.full_name || '';
+            this.data.lastName = profile.last_name || profile.company || '';
+            this.data.description = profile.description || '';
+            this.data.linkedinUrl = profile.linkedin_link || profile.linkedin_url || '';
+            
+            if (profile.topic) {
+                this.data.niche = typeof profile.topic === 'string' ? profile.topic.split(',').map(s => s.trim()).filter(Boolean) : (Array.isArray(profile.topic) ? profile.topic : []);
             }
 
-            if (tonesRes.data) onboarding.data.availableTones = tonesRes.data.map(t => t.name);
-            if (goalsRes.data) onboarding.data.availableGoals = goalsRes.data.map(g => g.name);
+            // Map User Selections
+            if (userTonesRes.data) this.data.tone = userTonesRes.data.map(ut => ut.id_tone);
+            if (userGoalsRes.data) this.data.goal = userGoalsRes.data.map(ug => ug.id_goal);
+
+            // Map Master Options
+            if (tonesRes.data) this.data.availableTones = tonesRes.data.map(t => ({ id: t.id_tone, name: t.name }));
+            if (goalsRes.data) this.data.availableGoals = goalsRes.data.map(g => ({ id: g.id_goal, name: g.name }));
 
             this.isLoaded = true;
             this.init();
@@ -81,20 +93,65 @@ export const settings = {
 
     checkChanges() {
         const currentData = {
-            firstName: onboarding.data.firstName,
-            lastName: onboarding.data.lastName,
-            description: onboarding.data.description,
-            niche: onboarding.data.niche,
-            linkedinUrl: onboarding.data.linkedinUrl,
-            tone: onboarding.data.tone,
-            goal: onboarding.data.goal,
-            availableTones: onboarding.data.availableTones,
-            availableGoals: onboarding.data.availableGoals
+            firstName: this.data.firstName,
+            lastName: this.data.lastName,
+            description: this.data.description,
+            niche: this.data.niche,
+            linkedinUrl: this.data.linkedinUrl,
+            tone: this.data.tone,
+            goal: this.data.goal,
+            availableTones: this.data.availableTones,
+            availableGoals: this.data.availableGoals
         };
         
         // Deep compare
         this.hasChanges = JSON.stringify(currentData) !== JSON.stringify(this.initialData);
         return this.hasChanges;
+    },
+
+    toggleTone(toneId) {
+        if (this.data.tone.includes(toneId)) {
+            this.data.tone = this.data.tone.filter(id => id !== toneId);
+        } else {
+            if (this.data.tone.length < 3) {
+                this.data.tone.push(toneId);
+            }
+        }
+        this.updateSaveButton();
+    },
+
+    toggleGoal(goalId) {
+        if (this.data.goal.includes(goalId)) {
+            this.data.goal = this.data.goal.filter(id => id !== goalId);
+        } else {
+            if (this.data.goal.length < 3) {
+                this.data.goal.push(goalId);
+            }
+        }
+        this.updateSaveButton();
+    },
+
+    async saveJoinData(tableName, idColumn, idList) {
+        if (!this.data.userId) return;
+
+        try {
+            // 1. Supprimer les anciennes sélections
+            await supabase
+                .from(tableName)
+                .delete()
+                .eq('id_user', this.data.userId);
+
+            // 2. Insérer les nouvelles sélections
+            if (idList && idList.length > 0) {
+                const inserts = idList.map(id => ({
+                    id_user: this.data.userId,
+                    [idColumn]: id
+                }));
+                await supabase.from(tableName).insert(inserts);
+            }
+        } catch (err) {
+            console.error(`Settings: Error saving ${tableName}`, err);
+        }
     },
 
     handleBack() {
@@ -109,7 +166,7 @@ export const settings = {
     async saveAndExit() {
         await this.save();
         if (this.saveStatus === 'success') {
-            window.dashboard.setTab('signal');
+            window.dashboard.setTab('signal', true);
         }
     },
 
@@ -123,30 +180,50 @@ export const settings = {
             if (!session) throw new Error("No session");
 
             const updateData = {
-                first_name: onboarding.data.firstName,
-                last_name: onboarding.data.lastName, // Brand is stored in last_name in this architecture
-                description: onboarding.data.description,
-                topic: onboarding.data.niche.join(', '),
-                linkedin_link: onboarding.data.linkedinUrl,
-                tone: Array.isArray(onboarding.data.tone) ? onboarding.data.tone.join(', ') : onboarding.data.tone,
-                goal: Array.isArray(onboarding.data.goal) ? onboarding.data.goal.join(', ') : onboarding.data.goal
+                first_name: this.data.firstName,
+                last_name: this.data.lastName,
+                company: this.data.lastName, // Map Brand/Entreprise to company column
+                description: this.data.description,
+                topic: this.data.niche.join(', '),
+                linkedin_link: this.data.linkedinUrl,
+                linkedin_url: this.data.linkedinUrl
             };
 
             const { error } = await supabase
                 .from('users')
                 .update(updateData)
-                .eq('id_auth_user', session.user.id);
+                .eq('id_user', this.data.userId);
 
             if (error) throw error;
+
+            // Save Tones and Goals to Join Tables
+            await Promise.all([
+                this.saveJoinData('user_tones', 'id_tone', this.data.tone),
+                this.saveJoinData('user_goals', 'id_goal', this.data.goal)
+            ]);
             
             this.saveStatus = 'success';
             this.hasChanges = false;
-            // Update initial data after successful save
-            this.init();
             
+            // Re-fetch data from DB to ensure local UI is in sync
+            this.isLoaded = false; 
+            await this.loadUserData();
+
+            // Notify dashboard of update
+            if (window.userProfile) {
+                await window.userProfile.load();
+            }
+
+            if (window.dashboard) {
+                window.dashboard.render();
+            }
+            
+            // Auto-reset status after delay
             setTimeout(() => {
                 this.saveStatus = null;
-                this.render();
+                if (document.getElementById('settings-save-btn')) {
+                    this.render();
+                }
             }, 2000);
         } catch (e) {
             console.error("Settings: Save error", e);
@@ -157,56 +234,77 @@ export const settings = {
         }
     },
 
+    updateSaveButton() {
+        const btn = document.getElementById('settings-save-btn');
+        if (!btn) return;
+        
+        this.checkChanges();
+        
+        const isInactive = !this.hasChanges || this.isSaving;
+        
+        if (isInactive) {
+            btn.disabled = true;
+            btn.className = "group relative px-12 py-5 rounded-2xl font-black uppercase tracking-[0.2em] text-xs transition-all flex items-center gap-4 bg-zinc-800 text-zinc-600 cursor-not-allowed border border-white/5";
+            btn.onclick = null;
+            btn.innerHTML = `
+                <i data-lucide="${this.isSaving ? 'refresh-cw' : 'save'}" class="w-4 h-4 ${this.isSaving ? 'animate-spin' : ''}"></i>
+                <span>${this.isSaving ? 'Synchronisation...' : 'Enregistrer les modifications'}</span>
+            `;
+        } else {
+            btn.disabled = false;
+            btn.className = "group relative px-12 py-5 rounded-2xl font-black uppercase tracking-[0.2em] text-xs transition-all flex items-center gap-4 bg-blue-600 text-white shadow-[0_0_30px_rgba(59,130,246,0.3)] hover:shadow-[0_0_50px_rgba(59,130,246,0.5)] active:scale-95 cursor-pointer";
+            btn.onclick = () => this.saveAndExit();
+            btn.innerHTML = `
+                <i data-lucide="save" class="w-4 h-4"></i>
+                <span>Enregistrer les modifications</span>
+            `;
+        }
+        if (window.lucide) window.lucide.createIcons();
+    },
+
     addTopic() {
         const input = document.getElementById('settings-topic-input');
         const val = input?.value?.trim();
-        if (val && !onboarding.data.niche.includes(val)) {
-            onboarding.data.niche.push(val);
-            this.checkChanges();
-            this.render();
+        if (val && !this.data.niche.includes(val)) {
+            if (this.data.niche.length < 3) {
+                this.data.niche.push(val);
+                this.updateSaveButton();
+                this.render();
+            }
         }
     },
 
     removeTopic(idx) {
-        onboarding.data.niche.splice(idx, 1);
-        this.checkChanges();
+        this.data.niche.splice(idx, 1);
+        this.updateSaveButton();
         this.render();
     },
 
     addTone() {
         const input = document.getElementById('settings-tone-input');
         const val = input?.value?.trim();
-        if (val && !onboarding.data.availableTones.includes(val)) {
-            onboarding.data.availableTones.push(val);
-            this.checkChanges();
-            this.render();
+        if (val && !this.data.availableTones.find(t => t.name === val)) {
+            // Note: In a real scenario, adding a custom tone might require a DB insert to get an ID.
+            // For now we just add it to the local list if it was intended to be a simple string list,
+            // but the current architecture uses IDs.
+            console.warn("Settings: Adding custom tones manually is not fully implemented with ID-based system.");
         }
     },
 
     removeTone(idx) {
-        const tone = onboarding.data.availableTones[idx];
-        onboarding.data.availableTones.splice(idx, 1);
-        onboarding.data.tone = onboarding.data.tone.filter(t => t !== tone);
-        this.checkChanges();
-        this.render();
+        // This seems to be for available tones, but we usually want to toggle selections.
+        // The render method uses toggleTone for selections.
+        // If these were for custom additions, they should be handled differently.
     },
 
     addGoal() {
         const input = document.getElementById('settings-goal-input');
         const val = input?.value?.trim();
-        if (val && !onboarding.data.availableGoals.includes(val)) {
-            onboarding.data.availableGoals.push(val);
-            this.checkChanges();
-            this.render();
-        }
+        // Similar to addTone, needs proper ID handling if we want to add new master options
     },
 
     removeGoal(idx) {
-        const goal = onboarding.data.availableGoals[idx];
-        onboarding.data.availableGoals.splice(idx, 1);
-        onboarding.data.goal = onboarding.data.goal.filter(g => g !== goal);
-        this.checkChanges();
-        this.render();
+        // Similar to removeTone
     },
 
     render() {
@@ -249,18 +347,18 @@ export const settings = {
                         <div class="space-y-6">
                             <div class="space-y-2">
                                 <label class="text-[10px] font-mono text-zinc-500 uppercase tracking-widest font-bold">Prénom</label>
-                                <input type="text" value="${onboarding.data.firstName}" oninput="window.onboarding.data.firstName = this.value; window.settings.checkChanges()" 
+                                <input type="text" value="${this.data.firstName}" oninput="window.settings.data.firstName = this.value; window.settings.updateSaveButton()" 
                                        class="w-full bg-zinc-950 border border-white/5 rounded-2xl px-6 py-4 text-white placeholder-zinc-800 outline-none focus:ring-1 focus:ring-blue-500/30 transition-all font-medium text-sm">
                             </div>
                             <div class="space-y-2">
                                 <label class="text-[10px] font-mono text-zinc-500 uppercase tracking-widest font-bold">Marque / Compagnie</label>
-                                <input type="text" value="${onboarding.data.lastName}" oninput="window.onboarding.data.lastName = this.value; window.settings.checkChanges()" 
+                                <input type="text" value="${this.data.lastName}" oninput="window.settings.data.lastName = this.value; window.settings.updateSaveButton()" 
                                        class="w-full bg-zinc-950 border border-white/5 rounded-2xl px-6 py-4 text-white placeholder-zinc-800 outline-none focus:ring-1 focus:ring-blue-500/30 transition-all font-medium text-sm">
                             </div>
                             <div class="space-y-2">
                                 <label class="text-[10px] font-mono text-zinc-500 uppercase tracking-widest font-bold">Descriptif / Mission</label>
-                                <textarea oninput="window.onboarding.data.description = this.value; window.settings.checkChanges()" 
-                                          class="w-full bg-zinc-950 border border-white/5 rounded-2xl px-6 py-4 text-white placeholder-zinc-800 outline-none focus:ring-1 focus:ring-blue-500/30 transition-all font-medium text-sm h-24 resize-none">${onboarding.data.description || ''}</textarea>
+                                <textarea oninput="window.settings.data.description = this.value; window.settings.updateSaveButton()" 
+                                          class="w-full bg-zinc-950 border border-white/5 rounded-2xl px-6 py-4 text-white placeholder-zinc-800 outline-none focus:ring-1 focus:ring-blue-500/30 transition-all font-medium text-sm h-24 resize-none">${this.data.description || ''}</textarea>
                             </div>
                         </div>
                     </div>
@@ -273,7 +371,7 @@ export const settings = {
                         </div>
                         <div class="space-y-2">
                             <label class="text-[10px] font-mono text-zinc-500 uppercase tracking-widest font-bold">Profil LinkedIn</label>
-                            <input type="text" value="${onboarding.data.linkedinUrl || ''}" oninput="window.onboarding.data.linkedinUrl = this.value; window.settings.checkChanges()" placeholder="https://linkedin.com/in/..." 
+                            <input type="text" value="${this.data.linkedinUrl || ''}" oninput="window.settings.data.linkedinUrl = this.value; window.settings.updateSaveButton()" placeholder="https://linkedin.com/in/..." 
                                    class="w-full bg-zinc-950 border border-white/5 rounded-2xl px-6 py-4 text-white placeholder-zinc-800 outline-none focus:ring-1 focus:ring-blue-500/30 transition-all font-medium text-sm">
                         </div>
                     </div>
@@ -285,7 +383,7 @@ export const settings = {
                             <h3 class="text-xs font-black uppercase tracking-[0.2em] text-white">Spectre de Détection</h3>
                         </div>
                         <div class="flex flex-wrap gap-2 min-h-[60px] p-4 bg-zinc-950/50 border border-white/5 rounded-2xl">
-                            ${onboarding.data.niche.length === 0 ? '<span class="text-zinc-700 text-[10px] uppercase tracking-widest italic p-2">Aucune fréquence active...</span>' : onboarding.data.niche.map((t, idx) => `
+                            ${this.data.niche.length === 0 ? '<span class="text-zinc-700 text-[10px] uppercase tracking-widest italic p-2">Aucune fréquence active...</span>' : this.data.niche.map((t, idx) => `
                                 <div class="inline-flex items-center gap-2 px-4 py-2 bg-zinc-900 border border-white/5 rounded-xl text-[11px] font-bold text-zinc-300">
                                     <span>${t}</span>
                                     <button onclick="window.settings.removeTopic(${idx})" class="text-zinc-600 hover:text-red-500 transition-colors">
@@ -312,51 +410,41 @@ export const settings = {
                         </div>
                         
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-12">
-                            <!-- Tons -->
+                            <!-- Modulation du Ton -->
                             <div class="space-y-6">
-                                <label class="text-[10px] font-mono text-zinc-500 uppercase tracking-widest font-bold">Modulation du Ton</label>
+                                <label class="text-[10px] font-mono text-zinc-500 uppercase tracking-[0.3em] font-bold">Modulation du Ton (1 à 3 max)</label>
                                 <div class="flex flex-wrap gap-2">
-                                    ${onboarding.data.availableTones.map((t, idx) => `
-                                        <div onclick="window.onboarding.toggleTone('${t}'); window.settings.checkChanges(); window.settings.render()" 
-                                             class="relative flex items-center gap-2 px-4 py-2 rounded-xl border transition-all cursor-pointer text-[10px] font-black uppercase tracking-widest ${onboarding.data.tone.includes(t) ? 'bg-blue-500/10 border-blue-500 text-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.2)]' : 'bg-zinc-950 border-white/5 text-zinc-600 hover:border-white/10'}">
-                                            <span>${t}</span>
-                                            <button onclick="event.stopPropagation(); window.settings.removeTone(${idx})" class="ml-2 opacity-50 hover:opacity-100 hover:text-red-500 transition-all">
-                                                <i data-lucide="x" class="w-3 h-3"></i>
-                                            </button>
-                                        </div>
-                                    `).join('')}
-                                </div>
-                                <div class="relative">
-                                    <input type="text" id="settings-tone-input" placeholder="Ajouter un ton..." 
-                                           class="w-full bg-zinc-950 border border-white/5 rounded-xl px-4 py-3 pr-12 text-white placeholder-zinc-800 outline-none focus:ring-1 focus:ring-blue-500/30 transition-all text-xs"
-                                           onkeypress="if(event.key === 'Enter') window.settings.addTone()">
-                                    <button onclick="window.settings.addTone()" class="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-blue-500 hover:text-blue-400">
-                                        <i data-lucide="plus" class="w-4 h-4"></i>
-                                    </button>
+                                    ${this.data.availableTones.map(t => {
+                                        const isSelected = this.data.tone.includes(t.id);
+                                        return `<button
+                                            onclick="window.settings.toggleTone('${t.id}'); window.settings.render()"
+                                            class="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all duration-200 border
+                                            ${ isSelected
+                                                ? 'bg-blue-600 border-blue-500 text-white shadow-[0_0_12px_rgba(59,130,246,0.4)]'
+                                                : 'bg-white/5 border-white/10 text-zinc-400 hover:border-blue-500/40 hover:text-white'
+                                            }">
+                                            ${t.name}
+                                        </button>`;
+                                    }).join('')}
                                 </div>
                             </div>
 
-                            <!-- Objectifs -->
+                            <!-- Objectif Stratégique -->
                             <div class="space-y-6">
-                                <label class="text-[10px] font-mono text-zinc-500 uppercase tracking-widest font-bold">Objectif Stratégique</label>
+                                <label class="text-[10px] font-mono text-zinc-500 uppercase tracking-[0.3em] font-bold">Objectif Stratégique (1 à 3 max)</label>
                                 <div class="flex flex-wrap gap-2">
-                                    ${onboarding.data.availableGoals.map((g, idx) => `
-                                        <div onclick="window.onboarding.toggleGoal('${g}'); window.settings.checkChanges(); window.settings.render()" 
-                                             class="relative flex items-center gap-2 px-4 py-2 rounded-xl border transition-all cursor-pointer text-[10px] font-black uppercase tracking-widest ${onboarding.data.goal.includes(g) ? 'bg-blue-500/10 border-blue-500 text-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.2)]' : 'bg-zinc-950 border-white/5 text-zinc-600 hover:border-white/10'}">
-                                            <span>${g}</span>
-                                            <button onclick="event.stopPropagation(); window.settings.removeGoal(${idx})" class="ml-2 opacity-50 hover:opacity-100 hover:text-red-500 transition-all">
-                                                <i data-lucide="x" class="w-3 h-3"></i>
-                                            </button>
-                                        </div>
-                                    `).join('')}
-                                </div>
-                                <div class="relative">
-                                    <input type="text" id="settings-goal-input" placeholder="Ajouter un objectif..." 
-                                           class="w-full bg-zinc-950 border border-white/10 rounded-xl px-4 py-3 pr-12 text-white placeholder-zinc-800 outline-none focus:ring-1 focus:ring-blue-500/30 transition-all text-xs"
-                                           onkeypress="if(event.key === 'Enter') window.settings.addGoal()">
-                                    <button onclick="window.settings.addGoal()" class="absolute right-2 top-1/2 -translate-y-1/2 p-2 text-blue-500 hover:text-blue-400">
-                                        <i data-lucide="plus" class="w-4 h-4"></i>
-                                    </button>
+                                    ${this.data.availableGoals.map(g => {
+                                        const isSelected = this.data.goal.includes(g.id);
+                                        return `<button
+                                            onclick="window.settings.toggleGoal('${g.id}'); window.settings.render()"
+                                            class="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all duration-200 border
+                                            ${ isSelected
+                                                ? 'bg-blue-600 border-blue-500 text-white shadow-[0_0_12px_rgba(59,130,246,0.4)]'
+                                                : 'bg-white/5 border-white/10 text-zinc-400 hover:border-blue-500/40 hover:text-white'
+                                            }">
+                                            ${g.name}
+                                        </button>`;
+                                    }).join('')}
                                 </div>
                             </div>
                         </div>
@@ -364,8 +452,13 @@ export const settings = {
                 </div>
 
                 <div class="flex items-center justify-center pt-12">
-                    <button onclick="window.settings.save()" 
-                            class="group relative px-12 py-5 bg-blue-600 rounded-2xl text-white font-black uppercase tracking-[0.2em] text-xs shadow-[0_0_30px_rgba(59,130,246,0.3)] hover:shadow-[0_0_50px_rgba(59,130,246,0.5)] transition-all flex items-center gap-4 ${this.isSaving ? 'opacity-70 cursor-wait' : ''}">
+                    <button id="settings-save-btn"
+                            onclick="${this.hasChanges && !this.isSaving ? 'window.settings.saveAndExit()' : ''}" 
+                            ${!this.hasChanges || this.isSaving ? 'disabled' : ''}
+                            class="group relative px-12 py-5 rounded-2xl font-black uppercase tracking-[0.2em] text-xs transition-all flex items-center gap-4 
+                            ${!this.hasChanges || this.isSaving 
+                                ? 'bg-zinc-800 text-zinc-600 cursor-not-allowed border border-white/5' 
+                                : 'bg-blue-600 text-white shadow-[0_0_30px_rgba(59,130,246,0.3)] hover:shadow-[0_0_50_rgba(59,130,246,0.5)] active:scale-95 cursor-pointer'}">
                         ${this.isSaving ? '<i data-lucide="refresh-cw" class="w-4 h-4 animate-spin"></i>' : '<i data-lucide="save" class="w-4 h-4"></i>'}
                         <span>${this.isSaving ? 'Synchronisation...' : 'Enregistrer les modifications'}</span>
                     </button>
@@ -388,7 +481,7 @@ export const settings = {
                                 <button onclick="window.settings.saveAndExit()" class="w-full py-4 bg-blue-600 hover:bg-blue-500 rounded-2xl text-white font-black uppercase tracking-widest text-[10px] transition-all shadow-lg shadow-blue-600/20">
                                     Enregistrer et Quitter
                                 </button>
-                                <button onclick="window.settings.showModal = false; window.dashboard.setTab('signal')" class="w-full py-4 bg-white/5 border border-white/10 hover:bg-white/10 rounded-2xl text-zinc-300 font-black uppercase tracking-widest text-[10px] transition-all">
+                                <button onclick="window.settings.showModal = false; window.dashboard.setTab('signal', true)" class="w-full py-4 bg-white/5 border border-white/10 hover:bg-white/10 rounded-2xl text-zinc-300 font-black uppercase tracking-widest text-[10px] transition-all">
                                     Quitter sans enregistrer
                                 </button>
                                 <button onclick="window.settings.showModal = false; window.settings.render()" class="w-full py-3 text-zinc-500 hover:text-zinc-300 font-bold uppercase tracking-widest text-[9px] transition-all">

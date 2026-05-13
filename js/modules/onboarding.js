@@ -849,3 +849,5 @@ export const onboarding = {
         if (window.lucide) window.lucide.createIcons();
     }
 };
+
+window.onboarding = onboarding;

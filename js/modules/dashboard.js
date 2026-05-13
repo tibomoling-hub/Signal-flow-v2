@@ -1,4 +1,4 @@
-import { onboarding } from './onboarding.js';
+import { userProfile } from './user.js';
 import { signal } from './signal.js';
 import { creation } from './creation.js';
 import { settings } from './settings.js';
@@ -14,7 +14,13 @@ export const dashboard = {
         analytics: { label: 'Analytic', icon: 'bar-chart-3' }
     },
 
-    setTab(tabId) {
+    setTab(tabId, force = false) {
+        // Sécurité : Si on quitte les paramètres avec des modifs non sauvées
+        if (!force && this.currentTab === 'settings' && tabId !== 'settings' && settings.hasChanges) {
+            settings.handleBack(); // Déclenche la modal de confirmation
+            return;
+        }
+
         this.currentTab = tabId;
         this.isMobileMenuOpen = false;
         this.render();
@@ -22,6 +28,11 @@ export const dashboard = {
         if (tabId === 'signal') signal.fetchTrends();
         else if (tabId === 'creation') creation.render();
         else if (tabId === 'settings') settings.render();
+    },
+
+    async init() {
+        await userProfile.load();
+        this.render();
     },
 
     startCreation(trendId) {
@@ -51,7 +62,7 @@ export const dashboard = {
                         <i data-lucide="${this.isMobileMenuOpen ? 'x' : 'menu'}" class="text-white w-5 h-5"></i>
                     </button>
                 </header>
-
+ 
                 <!-- Sidebar -->
                 <aside id="sidebar" class="${this.isMobileMenuOpen ? 'flex' : 'hidden'} md:flex flex-col w-full md:w-64 border-r border-white/5 bg-anthracite-950 h-screen sticky top-0 z-40 transition-all duration-300">
                     <div class="p-8 hidden md:flex items-center gap-3">
@@ -76,11 +87,11 @@ export const dashboard = {
                         <div onclick="window.dashboard.setTab('settings')" 
                              class="flex items-center gap-3 p-3 rounded-2xl bg-white/[0.02] border transition-all cursor-pointer group ${this.currentTab === 'settings' ? 'border-blue-500/50 bg-blue-600/5' : 'border-white/5 hover:border-white/10'}">
                             <div class="w-9 h-9 rounded-full bg-blue-600 flex items-center justify-center font-black text-white shadow-lg text-xs">
-                                ${(onboarding.data.firstName || 'C')[0]}
+                                ${(userProfile.data.firstName || 'C')[0]}
                             </div>
                             <div class="flex-1 min-w-0">
-                                <p class="text-xs font-bold text-white truncate">${onboarding.data.firstName || 'Créateur'}</p>
-                                <p class="text-[10px] uppercase tracking-widest text-zinc-600 truncate font-black">${onboarding.data.brand || 'Free Plan'}</p>
+                                <p class="text-xs font-bold text-white truncate">${userProfile.data.firstName || 'Créateur'}</p>
+                                <p class="text-[10px] uppercase tracking-widest text-zinc-600 truncate font-black">${userProfile.data.brand || 'Free Plan'}</p>
                             </div>
                             <i data-lucide="settings" class="w-4 h-4 ${this.currentTab === 'settings' ? 'text-blue-400' : 'text-zinc-700 group-hover:text-zinc-400'}"></i>
                         </div>

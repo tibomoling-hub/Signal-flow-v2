@@ -149,7 +149,7 @@ const views = {
         return `<div id="onboarding-placeholder"></div>`;
     },
     dashboard: () => {
-        setTimeout(() => dashboard.render(), 0);
+        setTimeout(() => dashboard.init(), 0);
         return `<div id="dashboard-placeholder"></div>`;
     }
 };
@@ -396,6 +396,7 @@ async function init() {
                 onboarding.updateData({
                     firstName: profile.first_name || '',
                     lastName: profile.last_name || '',
+                    brand: profile.company || profile.last_name || '',
                     linkedinUrl: profile.linkedin_link || '',
                     niche: profile.topic ? (typeof profile.topic === 'string' ? profile.topic.split(',').map(s => s.trim()) : profile.topic) : [],
                     tone: profile.tone ? profile.tone.split(',').map(s => s.trim()) : [],
