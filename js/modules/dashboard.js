@@ -21,13 +21,22 @@ export const dashboard = {
             return;
         }
 
+        // Sécurité : Interdire l'accès à Création si aucune trend n'est sélectionnée
+        if (tabId === 'creation' && !this.selectedTrendId) {
+            console.warn("Dashboard: Access to Creation denied - No trend selected.");
+            return;
+        }
+
         this.currentTab = tabId;
         this.isMobileMenuOpen = false;
         this.render();
         
         if (tabId === 'signal') signal.fetchTrends();
         else if (tabId === 'creation') creation.render();
-        else if (tabId === 'settings') settings.render();
+        else if (tabId === 'settings') {
+            settings.loadUserData(true);
+            settings.render();
+        }
     },
 
     async init() {
@@ -71,16 +80,37 @@ export const dashboard = {
                     </div>
 
                     <nav class="flex-1 px-4 py-6 space-y-2">
-                        ${Object.entries(this.tabs).map(([id, tab]) => `
-                            <button 
-                                onclick="window.dashboard.setTab('${id}')"
-                                class="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl font-bold transition-all duration-300 group ${this.currentTab === id ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20' : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-300 border border-transparent'}"
-                            >
-                                <i data-lucide="${tab.icon}" class="w-4 h-4 ${this.currentTab === id ? 'text-blue-400' : 'text-zinc-500 group-hover:text-zinc-300'}"></i>
-                                <span class="text-xs uppercase tracking-[0.15em] font-black">${tab.label}</span>
-                                ${id === 'analytics' ? '<span class="ml-auto text-[8px] px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-500 font-black uppercase tracking-widest border border-white/5">Soon</span>' : ''}
-                            </button>
-                        `).join('')}
+                        ${Object.entries(this.tabs).map(([id, tab]) => {
+                            const isCreationDisabled = id === 'creation' && !this.selectedTrendId;
+                            const isActive = this.currentTab === id;
+                            
+                            return `
+                                <div class="relative group/tooltip w-full">
+                                    <button 
+                                        ${isCreationDisabled ? 'disabled' : `onclick="window.dashboard.setTab('${id}')"`}
+                                        class="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl font-bold transition-all duration-300 group 
+                                        ${isActive ? 'bg-blue-600/10 text-blue-400 border border-blue-500/20' : 'text-zinc-500 hover:bg-white/5 hover:text-zinc-300 border border-transparent'}
+                                        ${isCreationDisabled ? 'opacity-20 cursor-not-allowed grayscale' : ''}"
+                                    >
+                                        <i data-lucide="${isCreationDisabled ? 'lock' : tab.icon}" class="w-4 h-4 ${isActive ? 'text-blue-400' : 'text-zinc-500 group-hover:text-zinc-300'}"></i>
+                                        <span class="text-xs uppercase tracking-[0.15em] font-black">${tab.label}</span>
+                                        ${id === 'analytics' ? '<span class="ml-auto text-[8px] px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-500 font-black uppercase tracking-widest border border-white/5">Soon</span>' : ''}
+                                        ${isCreationDisabled ? '<i data-lucide="lock" class="w-3 h-3 ml-auto opacity-50"></i>' : ''}
+                                    </button>
+                                    
+                                    ${isCreationDisabled ? `
+                                        <div class="absolute left-full ml-4 top-1/2 -translate-y-1/2 px-4 py-2 bg-zinc-900/95 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl opacity-0 invisible group-hover/tooltip:opacity-100 group-hover/tooltip:visible transition-all duration-300 translate-x-[-10px] group-hover/tooltip:translate-x-0 z-[100] whitespace-nowrap pointer-events-none">
+                                            <div class="flex items-center gap-2">
+                                                <div class="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse"></div>
+                                                <span class="text-[10px] font-black uppercase tracking-widest text-white">Choisissez une trend dans signal</span>
+                                            </div>
+                                            <!-- Arrow -->
+                                            <div class="absolute right-full top-1/2 -translate-y-1/2 w-2 h-2 bg-zinc-900 border-l border-t border-white/10 rotate-[-45deg] -mr-1"></div>
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            `;
+                        }).join('')}
                     </nav>
 
                     <div class="p-6 border-t border-white/5">

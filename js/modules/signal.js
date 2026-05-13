@@ -57,7 +57,7 @@ export const signal = {
         if (this.loadingTrends[trendId]) return;
 
         // 1. Basculer vers la Création avec le skeleton de chargement
-        window.dashboard.setTab('creation');
+        window.dashboard.startCreation(trendId);
         creation.isAiLoading = true;
         creation.render();
 
@@ -101,7 +101,7 @@ export const signal = {
 
             console.log('📡 [Signal Flow] Envoi au Webhook (Array Format) :', webhookBody);
 
-            const response = await fetch('https://oreegami.app.n8n.cloud/webhook-test/creation-post', {
+            const response = await fetch('https://oreegami.app.n8n.cloud/webhook/creation-post', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(webhookBody)
@@ -237,10 +237,6 @@ export const signal = {
         html += '    </div>';
         html += '  </div>';
         
-        // 2. Tag Pill
-        html += '  <div class="flex items-center bg-zinc-800/30 px-3 py-1.5 rounded-full border border-white/5 shrink-0">';
-        html += '    <span class="text-[10px] font-black text-zinc-500 uppercase tracking-[0.2em]">#' + (trend.topic || 'AI') + '</span>';
-        html += '  </div>';
         
         // 3. Date Pill
         html += '  <div class="flex items-center gap-2 bg-zinc-800/30 px-3 py-1.5 rounded-full border border-white/5 shrink-0">';

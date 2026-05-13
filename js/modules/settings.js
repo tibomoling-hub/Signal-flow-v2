@@ -16,8 +16,6 @@ export const settings = {
         userId: null,
         firstName: '',
         lastName: '',
-        description: '',
-        niche: [],
         linkedinUrl: '',
         tone: [],
         goal: [],
@@ -30,8 +28,6 @@ export const settings = {
         this.initialData = JSON.parse(JSON.stringify({
             firstName: this.data.firstName,
             lastName: this.data.lastName,
-            description: this.data.description,
-            niche: [...this.data.niche],
             linkedinUrl: this.data.linkedinUrl,
             tone: [...(this.data.tone || [])],
             goal: [...(this.data.goal || [])],
@@ -41,7 +37,8 @@ export const settings = {
         this.hasChanges = false;
     },
 
-    async loadUserData() {
+    async loadUserData(force = false) {
+        if (force) this.isLoaded = false;
         if (this.isLoaded) return;
         
         try {
@@ -72,10 +69,6 @@ export const settings = {
             this.data.firstName = profile.first_name || '';
             this.data.lastName = profile.last_name || '';
             this.data.linkedinUrl = profile.linkedin_link || profile.linkedin_url || '';
-            
-            if (profile.topic) {
-                this.data.niche = typeof profile.topic === 'string' ? profile.topic.split(',').map(s => s.trim()).filter(Boolean) : (Array.isArray(profile.topic) ? profile.topic : []);
-            }
 
             // Map User Selections
             if (userTonesRes.data) this.data.tone = userTonesRes.data.map(ut => ut.id_tone);
@@ -97,8 +90,6 @@ export const settings = {
         const currentData = {
             firstName: this.data.firstName,
             lastName: this.data.lastName,
-            description: this.data.description,
-            niche: this.data.niche,
             linkedinUrl: this.data.linkedinUrl,
             tone: this.data.tone,
             goal: this.data.goal,
@@ -208,7 +199,6 @@ export const settings = {
             const updateData = {
                 first_name: this.data.firstName,
                 last_name: this.data.lastName,
-                topic: this.data.niche.join(', '),
                 linkedin_link: this.data.linkedinUrl
             };
 
@@ -287,51 +277,6 @@ export const settings = {
         if (window.lucide) window.lucide.createIcons();
     },
 
-    addTopic() {
-        const input = document.getElementById('settings-topic-input');
-        const val = input?.value?.trim();
-        if (val && !this.data.niche.includes(val)) {
-            if (this.data.niche.length < 3) {
-                this.data.niche.push(val);
-                this.updateSaveButton();
-                this.render();
-            }
-        }
-    },
-
-    removeTopic(idx) {
-        this.data.niche.splice(idx, 1);
-        this.updateSaveButton();
-        this.render();
-    },
-
-    addTone() {
-        const input = document.getElementById('settings-tone-input');
-        const val = input?.value?.trim();
-        if (val && !this.data.availableTones.find(t => t.name === val)) {
-            // Note: In a real scenario, adding a custom tone might require a DB insert to get an ID.
-            // For now we just add it to the local list if it was intended to be a simple string list,
-            // but the current architecture uses IDs.
-            console.warn("Settings: Adding custom tones manually is not fully implemented with ID-based system.");
-        }
-    },
-
-    removeTone(idx) {
-        // This seems to be for available tones, but we usually want to toggle selections.
-        // The render method uses toggleTone for selections.
-        // If these were for custom additions, they should be handled differently.
-    },
-
-    addGoal() {
-        const input = document.getElementById('settings-goal-input');
-        const val = input?.value?.trim();
-        // Similar to addTone, needs proper ID handling if we want to add new master options
-    },
-
-    removeGoal(idx) {
-        // Similar to removeTone
-    },
-
     render() {
         const content = document.getElementById('main-content');
         if (!content) return;
@@ -393,32 +338,6 @@ export const settings = {
                             <label class="text-[10px] font-mono text-zinc-500 uppercase tracking-widest font-bold">Profil LinkedIn</label>
                             <input type="text" value="${this.data.linkedinUrl || ''}" oninput="window.settings.data.linkedinUrl = this.value; window.settings.updateSaveButton()" placeholder="https://linkedin.com/in/..." 
                                    class="w-full bg-zinc-950 border border-white/5 rounded-2xl px-6 py-4 text-white placeholder-zinc-800 outline-none focus:ring-1 focus:ring-blue-500/30 transition-all font-medium text-sm">
-                        </div>
-                    </div>
-
-                    <!-- Section 2: Spectre -->
-                    <div class="bg-white/5 p-8 rounded-3xl border border-white/10 space-y-8 lg:col-span-2">
-                        <div class="flex items-center gap-3">
-                            <i data-lucide="radar" class="text-blue-500 w-5 h-5"></i>
-                            <h3 class="text-xs font-black uppercase tracking-[0.2em] text-white">Spectre de Détection</h3>
-                        </div>
-                        <div class="flex flex-wrap gap-2 min-h-[60px] p-4 bg-zinc-950/50 border border-white/5 rounded-2xl">
-                            ${this.data.niche.length === 0 ? '<span class="text-zinc-700 text-[10px] uppercase tracking-widest italic p-2">Aucune fréquence active...</span>' : this.data.niche.map((t, idx) => `
-                                <div class="inline-flex items-center gap-2 px-4 py-2 bg-zinc-900 border border-white/5 rounded-xl text-[11px] font-bold text-zinc-300">
-                                    <span>${t}</span>
-                                    <button onclick="window.settings.removeTopic(${idx})" class="text-zinc-600 hover:text-red-500 transition-colors">
-                                        <i data-lucide="x" class="w-3.5 h-3.5"></i>
-                                    </button>
-                                </div>
-                            `).join('')}
-                        </div>
-                        <div class="relative max-w-md">
-                            <input type="text" id="settings-topic-input" placeholder="Ajouter une fréquence..." 
-                                   class="w-full bg-zinc-950 border border-white/5 rounded-2xl px-6 py-4 pr-14 text-white placeholder-zinc-800 outline-none focus:ring-1 focus:ring-blue-500/30 transition-all font-medium text-sm"
-                                   onkeypress="if(event.key === 'Enter') window.settings.addTopic()">
-                            <button onclick="window.settings.addTopic()" class="absolute right-4 top-1/2 -translate-y-1/2 text-blue-500 hover:text-blue-400">
-                                <i data-lucide="plus" class="w-5 h-5"></i>
-                            </button>
                         </div>
                     </div>
 

@@ -4,8 +4,6 @@ import { supabase } from '../supabase.js';
 
 export const creation = {
     format: 'post', // 'post' or 'carousel'
-    tone: 'Expert',
-    goal: 'Engagement',
     isAiLoading: false,
     currentPostId: null,
     currentPostTitle: null,
@@ -691,14 +689,35 @@ export const creation = {
         window.dashboard.setTab('signal');
     },
 
-    copyToClipboard() {
+    async copyToClipboard() {
+        const bodyHtml = this.content.post.body;
+        // On ajoute un wrapper avec du style inline pour aider le destinataire à interpréter le formatage
+        const fullHtml = `<div style="font-family: -apple-system, system-ui, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; white-space: pre-wrap;">${bodyHtml}</div>`;
+        
         const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = this.content.post.body;
+        tempDiv.innerHTML = bodyHtml;
         const text = tempDiv.innerText;
         
-        navigator.clipboard.writeText(text).then(() => {
-            this.showToast("Contenu copié !");
-        });
+        try {
+            const blobHtml = new Blob([fullHtml], { type: 'text/html' });
+            const blobText = new Blob([text], { type: 'text/plain' });
+            const data = [new ClipboardItem({
+                'text/html': blobHtml,
+                'text/plain': blobText
+            })];
+
+            await navigator.clipboard.write(data);
+            this.showToast("Contenu stylisé copié !");
+        } catch (err) {
+            console.warn("⚠️ [Signal Flow] Échec de la copie riche, repli sur texte brut", err);
+            // Fallback to simple text if ClipboardItem fails
+            try {
+                await navigator.clipboard.writeText(text);
+                this.showToast("Texte brut copié (formatage non supporté)");
+            } catch (e) {
+                console.error("❌ [Signal Flow] Erreur de copie:", e);
+            }
+        }
     },
 
     showToast(msg, type = 'success') {
@@ -735,6 +754,48 @@ export const creation = {
         }, 4000);
     },
 
+    isUuid(str) {
+        if (!str || typeof str !== 'string') return false;
+        const regex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        return regex.test(str);
+    },
+
+    async resolveMetadataId(type, value) {
+        if (!value) return null;
+        if (this.isUuid(value)) return value;
+
+        console.log(`🔍 [Signal Flow] Résolution du nom "${value}" en UUID pour ${type}...`);
+
+        // 1. Chercher dans les options déjà chargées
+        const list = type === 'tone' ? this.availableTones : this.availableGoals;
+        const found = list.find(item => item.name.toLowerCase() === value.toLowerCase());
+        if (found) {
+            const id = type === 'tone' ? found.id_tone : found.id_goal;
+            console.log(`✅ [Signal Flow] Trouvé en local: ${id}`);
+            return id;
+        }
+
+        // 2. Chercher en base si pas trouvé en local
+        try {
+            const table = type === 'tone' ? 'tones' : 'goals';
+            const idCol = type === 'tone' ? 'id_tone' : 'id_goal';
+            const { data, error } = await supabase
+                .from(table)
+                .select(idCol)
+                .ilike('name', value)
+                .single();
+
+            if (data) {
+                console.log(`✅ [Signal Flow] Trouvé en base (${table}): ${data[idCol]}`);
+                return data[idCol];
+            }
+        } catch (e) {
+            console.warn(`⚠️ [Signal Flow] Impossible de résoudre "${value}" via la base`, e);
+        }
+
+        return value; // Retourne l'original si rien n'est trouvé (échouera au save si pas UUID)
+    },
+
     async handleSave() {
         if (this.isSaving) return;
 
@@ -745,21 +806,44 @@ export const creation = {
         }
 
         this.isSaving = true;
-        this.renderButtons(); // Mise à jour de l'état visuel du bouton
+        this.renderButtons();
 
         try {
+            // Résolution des IDs avant sauvegarde
+            const resolvedTone = await this.resolveMetadataId('tone', this.tone);
+            const resolvedGoal = await this.resolveMetadataId('goal', this.goal);
+
             console.log("💾 [Signal Flow] Tentative de sauvegarde :");
             console.log("   - ID Post:", this.currentPostId);
-            console.log("   - Ton (ID):", this.tone);
-            console.log("   - Objectif (ID):", this.goal);
-            console.log("   - Taille contenu:", (this.content.post.body || "").length);
+            console.log("   - Ton (résolu):", resolvedTone);
+            console.log("   - Objectif (résolu):", resolvedGoal);
             
+            const { data: { session } } = await supabase.auth.getSession();
+            const currentUserId = session?.user?.id;
+
+            console.log("💾 [Signal Flow] Tentative de sauvegarde :");
+            console.log("   - ID Post:", this.currentPostId, `(${typeof this.currentPostId})`);
+            console.log("   - User ID (Auth):", currentUserId);
+            
+            // 1. Optionnel : Vérifier si le post existe avant l'update (pour le débug)
+            const { data: checkData } = await supabase
+                .from('posts')
+                .select('id_post, id_user')
+                .eq('id_post', this.currentPostId)
+                .maybeSingle();
+
+            if (!checkData) {
+                console.warn("⚠️ [Signal Flow] Le post n'a pas été trouvé en base AVANT l'update. ID inexistant ?");
+            } else {
+                console.log("🔍 [Signal Flow] Post trouvé en base avant update:", checkData);
+            }
+
             const { data, error } = await supabase
                 .from('posts')
                 .update({
                     content_body: this.content.post.body,
-                    id_tone: [this.tone],
-                    id_goal: [this.goal]
+                    id_tone: resolvedTone,
+                    id_goal: resolvedGoal
                 })
                 .eq('id_post', this.currentPostId)
                 .select(); 
@@ -770,6 +854,7 @@ export const creation = {
             }
             
             if (!data || data.length === 0) {
+                console.error("❌ [Signal Flow] Échec Update: Aucune ligne n'a été modifiée. RLS ? ID incorrect ?");
                 throw new Error("Aucune ligne n'a été mise à jour.");
             }
 
@@ -778,8 +863,11 @@ export const creation = {
             this.isModified = false;
             this.showToast("Le contenu a bien été enregistré et vérifié", 'success');
         } catch (err) {
-            console.error("❌ [Signal Flow] Erreur sauvegarde:", err.message);
-            this.showToast("Erreur lors de l'enregistrement : " + err.message, 'error');
+            console.error("❌ [Signal Flow] Erreur sauvegarde:", err.message || err);
+            if (err.details) console.error("   Details:", err.details);
+            if (err.hint) console.error("   Hint:", err.hint);
+            
+            this.showToast("Erreur lors de l'enregistrement : " + (err.message || "Erreur inconnue"), 'error');
         } finally {
             this.isSaving = false;
             this.render();
@@ -864,7 +952,7 @@ export const creation = {
 
             // 3. Appel au Webhook n8n
             console.log('📡 [Signal Flow] Appel webhook modification-post');
-            const response = await fetch('https://oreegami.app.n8n.cloud/webhook-test/modification-post', {
+            const response = await fetch('https://oreegami.app.n8n.cloud/webhook/modification-post', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({

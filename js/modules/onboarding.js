@@ -13,7 +13,7 @@ export const isValidSocialUrl = (url) => {
 
 export const onboarding = {
     step: 1,
-    totalSteps: 6,
+    totalSteps: 5,
     data: {
         firstName: '',
         lastName: '',
@@ -67,18 +67,15 @@ export const onboarding = {
             if (!this.data.firstName.trim()) this.errors.firstName = "Le nom est requis.";
             if (!this.data.lastName.trim()) this.errors.lastName = "Le prénom est requis.";
         } else if (this.step === 3) {
-            if (this.data.niche.length < 1) this.errors.niche = "Veuillez ajouter au moins une thématique.";
-            if (this.data.niche.length > 3) this.errors.niche = "Maximum 3 thématiques autorisées.";
-        } else if (this.step === 4) {
             if (this.data.linkedinUrl && !isValidSocialUrl(this.data.linkedinUrl)) {
                 this.errors.linkedin = "URL LinkedIn invalide.";
             }
-        } else if (this.step === 5) {
+        } else if (this.step === 4) {
             if (this.data.tone.length < 1) this.errors.tone = "Veuillez ajouter au moins un ton.";
             if (this.data.tone.length > 3) this.errors.tone = "Maximum 3 tons autorisés.";
             if (this.data.goal.length < 1) this.errors.goal = "Veuillez ajouter au moins un objectif.";
             if (this.data.goal.length > 3) this.errors.goal = "Maximum 3 objectifs autorisés.";
-        } else if (this.step === 6) {
+        } else if (this.step === 5) {
             if (!this.data.rgpd) this.errors.rgpd = "Acceptation requise.";
         }
         if (Object.keys(this.errors).length > 0) {
@@ -153,17 +150,11 @@ export const onboarding = {
                 break;
             case 3:
                 updateData = {
-                    topic: this.data.niche.join(', ')
-                };
-                columns = "topic";
-                break;
-            case 4:
-                updateData = {
                     linkedin_link: this.data.linkedinUrl
                 };
                 columns = "linkedin_link";
                 break;
-            case 5:
+            case 4:
                 // Pour les tables de liaison, on gère la logique dans une fonction dédiée ou ici
                 await this.saveJoinData('user_tones', 'id_tone', this.data.tone);
                 await this.saveJoinData('user_goals', 'id_goal', this.data.goal);
@@ -172,7 +163,7 @@ export const onboarding = {
                 updateData = {};
                 columns = "liaisons tables user_tones/goals";
                 break;
-            case 6:
+            case 5:
                 updateData = {
                     onboarding_completed: true,
                     rgpd_accepted: this.data.rgpd,
@@ -242,7 +233,7 @@ export const onboarding = {
     },
 
     async save() {
-        await this.saveStep(6);
+        await this.saveStep(5);
         
         // Validation Finale : Vérification de l'intégralité de la ligne
         const { data: finalProfile, error } = await supabase
@@ -579,67 +570,6 @@ export const onboarding = {
                     </div>
                 `;
             case 3:
-                if (!this.topicsLoaded) this.loadTopicsFromDB();
-                
-                return `
-                    <div class="flex flex-col items-center max-w-5xl mx-auto w-full">
-                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-20 items-center w-full min-h-[400px]">
-                            <!-- Left: Storytelling -->
-                            <div class="space-y-8">
-                                <div class="space-y-4">
-                                    <h2 class="text-5xl font-black text-white tracking-tighter leading-tight uppercase">
-                                        Cartographie <br/>
-                                        <span class="text-blue-500">des Intérêts</span>
-                                    </h2>
-                                    <div class="w-16 h-1 bg-blue-600"></div>
-                                </div>
-                                <p class="text-xl text-zinc-400 font-light leading-relaxed tracking-wide">
-                                    L'émetteur est calibré, définissons maintenant votre spectre de détection. Pour isoler les signaux qui comptent, nous devons connaître vos centres d'intérêt.
-                                </p>
-                                <p class="text-base text-zinc-500 font-light leading-relaxed">
-                                    Veuillez saisir vos thématiques sous forme de briques de contenu. Plus vos fréquences sont précises, plus l'analyse du flux sera chirurgicale.
-                                </p>
-                            </div>
-                            
-                            <div class="w-full max-w-md ml-auto space-y-8 bg-zinc-900 p-10 rounded-3xl border border-white/5 relative overflow-hidden">
-                                <div class="relative z-10 space-y-8">
-                                    <div class="space-y-4">
-                                        <label class="text-[10px] font-mono text-zinc-500 uppercase tracking-[0.2em] ml-1 font-bold">Ajouter une thématique (1 à 3 max)</label>
-                                        <div class="relative group/input">
-                                            <div class="relative">
-                                                <input type="text" id="topic-input" placeholder="ajouter une thématique..." 
-                                                       class="w-full bg-zinc-950 border border-white/10 rounded-2xl px-6 py-5 pr-14 text-white placeholder-zinc-800 outline-none focus:ring-1 focus:ring-blue-500/50 transition-all font-medium text-sm"
-                                                       onkeypress="if(event.key === 'Enter') window.onboarding.addTopic()">
-                                                <button onclick="window.onboarding.addTopic()" class="absolute right-4 top-1/2 -translate-y-1/2 text-blue-500 hover:text-blue-400">
-                                                    <i data-lucide="plus" class="w-5 h-5"></i>
-                                                </button>
-                                            </div>
-                                        </div>
-                                        ${errorMsg('niche')}
-                                    </div>
-
-                                    <div class="space-y-4">
-                                        <label class="text-[10px] font-mono text-zinc-500 uppercase tracking-[0.2em] ml-1 font-bold">Spectre de détection</label>
-                                        <div id="topic-container" class="flex flex-wrap gap-2 min-h-[140px] p-4 bg-zinc-950/50 border border-white/10 rounded-2xl items-start">
-                                            ${!this.topicsLoaded ? '<div class="flex items-center gap-3 text-zinc-700 p-2 animate-pulse"><i data-lucide="refresh-cw" class="w-3.5 h-3.5 animate-spin"></i><span class="text-[10px] uppercase tracking-widest font-mono">Synchronisation...</span></div>' : ''}
-                                            ${this.topicsLoaded && this.data.niche.length === 0 ? '<span class="text-zinc-700 text-[10px] italic p-2 uppercase tracking-widest">Prêt pour la synchronisation (aucun sujet détecté)</span>' : this.data.niche.map((t, idx) => `
-                                                <div class="inline-flex items-center gap-2 px-3 py-1.5 bg-zinc-800 border border-white/10 rounded-lg text-[11px] text-zinc-300">
-                                                    <span>${t}</span>
-                                                    <button onclick="window.onboarding.removeTopic(${idx})" class="text-zinc-500 hover:text-red-400 transition-colors">
-                                                        <i data-lucide="x" class="w-3.5 h-3.5"></i>
-                                                    </button>
-                                                </div>
-                                            `).join('')}
-                                        </div>
-                                    </div>
-
-                                    ${this.fetchError ? `<div class="text-center"><p class="text-xs font-mono text-red-500 opacity-50 uppercase tracking-tighter">${this.fetchError}</p></div>` : ''}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            case 4:
                 return `
                     <div class="flex flex-col items-center max-w-5xl mx-auto w-full">
                         <div class="grid grid-cols-1 lg:grid-cols-2 gap-20 items-center w-full min-h-[400px]">
@@ -666,7 +596,7 @@ export const onboarding = {
                         </div>
                     </div>
                 `;
-            case 5: {
+            case 4: {
                 if (!this.data.directionLoaded) this.loadDirectionDataFromDB();
                 if (!this.data.optionsLoaded) this.loadTonesAndGoalsOptions();
 
@@ -759,7 +689,7 @@ export const onboarding = {
                     </div>
                 `;
             }
-            case 6:
+            case 5:
                 return `
                     <div class="flex flex-col items-center max-w-5xl mx-auto w-full">
                         <div class="grid grid-cols-1 lg:grid-cols-2 gap-20 items-center w-full min-h-[400px]">
